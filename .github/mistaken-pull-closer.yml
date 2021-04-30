@@ -1,0 +1,12 @@
+# `true` will close all PRs.
+filters:
+  - true
+ 
+# The message to post to the closed PR.
+commentBody: |
+  Thanks for your contribution. Unfortunately, we don't accept pull requests
+  in this repository, so we will be closing this PR. Please see the README for
+  more information about how to provide feedback, thank you!
+ 
+# Whether to add a label to the closed PR.
+addLabel: false
