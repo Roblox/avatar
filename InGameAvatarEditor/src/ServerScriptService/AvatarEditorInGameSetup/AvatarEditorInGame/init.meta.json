@@ -1,0 +1,8 @@
+{
+  "className": "ScreenGui",
+  "ignoreUnknownInstances": true,
+  "properties": {
+    "ZIndexBehavior": "Sibling",
+    "DisplayOrder": 10
+  }
+}
