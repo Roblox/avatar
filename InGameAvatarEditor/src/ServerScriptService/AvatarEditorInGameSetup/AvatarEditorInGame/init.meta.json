@@ -3,6 +3,7 @@
   "ignoreUnknownInstances": true,
   "properties": {
     "ZIndexBehavior": "Sibling",
-    "DisplayOrder": 10
+    "DisplayOrder": 10,
+    "ResetOnSpawn": false
   }
 }

@@ -16,7 +16,8 @@ local ClientScripts = {
 }
 
 local function installClientScripts()
-	local AvatarEditorClientSetup = Instance.new("Folder")
+	local AvatarEditorClientSetup = Instance.new("ScreenGui")
+	AvatarEditorClientSetup.ResetOnSpawn = false
 	AvatarEditorClientSetup.Name = "AvatarEditorClientSetup"
 
 	local AvatarEditorInGame = AvatarEditorSetup.AvatarEditorInGame

@@ -4,6 +4,8 @@ local AvatarEditorService = game:GetService("AvatarEditorService")
 local StarterGui = game:GetService("StarterGui")
 local Players = game:GetService("Players")
 
+local LocalPlayer = Players.LocalPlayer
+
 script.Parent.ShowAndLeave.Enabled = true
 local showButton = script.Parent.ShowAndLeave.EditAvatarButton
 local leaveButton = script.Parent.ShowAndLeave.LeaveButton
@@ -109,6 +111,12 @@ local function hideAvatarEditor()
 	AvatarEditorManager:hideAvatarEditor()
 
 	game.Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+	if LocalPlayer.Character then
+		local humanoid = LocalPlayer.Character:FindFirstChildWhichIsA("Humanoid")
+		if humanoid then
+			game.Workspace.CurrentCamera.CameraSubject = humanoid
+		end
+	end
 
 	leaveButton.Visible = false
 	showButton.Visible = true

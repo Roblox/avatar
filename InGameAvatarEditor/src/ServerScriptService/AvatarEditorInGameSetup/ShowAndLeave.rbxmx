@@ -2,7 +2,7 @@
 	<Meta name="ExplicitAutoJoints">true</Meta>
 	<External>null</External>
 	<External>nil</External>
-	<Item class="ScreenGui" referent="RBXe58c393022ab41c0a8ef53e66b4b05ef">
+	<Item class="ScreenGui" referent="RBXdac34ccc37474ded9072076965e6a40a">
 		<Properties>
 			<BinaryString name="AttributesSerialize"></BinaryString>
 			<bool name="AutoLocalize">true</bool>
@@ -10,13 +10,13 @@
 			<bool name="Enabled">false</bool>
 			<bool name="IgnoreGuiInset">false</bool>
 			<string name="Name">ShowAndLeave</string>
-			<bool name="ResetOnSpawn">true</bool>
+			<bool name="ResetOnSpawn">false</bool>
 			<Ref name="RootLocalizationTable">null</Ref>
 			<int64 name="SourceAssetId">-1</int64>
 			<BinaryString name="Tags"></BinaryString>
 			<token name="ZIndexBehavior">1</token>
 		</Properties>
-		<Item class="ImageButton" referent="RBX59d379a1b37f4ddf8ce467aabe7f8ee2">
+		<Item class="ImageButton" referent="RBXb99e34ff5f2242f3b921a42e9992be5e">
 			<Properties>
 				<bool name="Active">true</bool>
 				<Vector2 name="AnchorPoint">
@@ -110,7 +110,7 @@
 				<int name="ZIndex">2</int>
 			</Properties>
 		</Item>
-		<Item class="ImageButton" referent="RBX1c513f0b7d4947dca583c32d6568c258">
+		<Item class="ImageButton" referent="RBXa685447c46f34e2ebd570508cacb25c7">
 			<Properties>
 				<bool name="Active">true</bool>
 				<Vector2 name="AnchorPoint">
