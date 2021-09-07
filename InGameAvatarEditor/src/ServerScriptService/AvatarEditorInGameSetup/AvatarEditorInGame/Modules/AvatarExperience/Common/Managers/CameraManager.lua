@@ -113,6 +113,11 @@ function CameraManager:start()
 
 	self.camera.CameraType = Enum.CameraType.Scriptable
 	-- TODO AVBURST-1630 - Remove FOV adjustments (put in place file) when removing the old Avatar Editor scene.
+
+	self.oldFieldOfViewMode = self.camera.FieldOfViewMode
+	self.oldFieldOfView = self.camera.FieldOfView
+
+	self.camera.FieldOfViewMode = Enum.FieldOfViewMode.Vertical
 	self.camera.FieldOfView = 50
 
 	local currentCharacter = self.store:getState().AvatarExperience.AvatarScene.Character.CurrentCharacter
@@ -130,6 +135,14 @@ function CameraManager:stop()
 		connection:disconnect()
 	end
 	self.connections = {}
+
+	if self.oldFieldOfViewMode then
+		self.camera.FieldOfViewMode = self.oldFieldOfViewMode
+		self.camera.FieldOfView = self.oldFieldOfView
+
+		self.oldFieldOfViewMode = nil
+		self.oldFieldOfView = nil
+	end
 end
 
 function CameraManager:getFullView(state)
@@ -164,9 +177,9 @@ function CameraManager:getTopBarHeight(state)
 	if AvatarExperienceUtils.getCurrentPage(state).name == AppPage.SearchPage then
 		return 0
 	end
-	
+
 	local topBarHeight = state.TopBar and state.TopBar.topBarHeight or 36
-	
+
 	return topBarHeight
 end
 
@@ -456,11 +469,11 @@ function CameraManager:tweenCameraIntoPlace(position, focusPoint, instant)
 		= CFrame.new(position)
 		* CFrame.new(Vector3.new(), focusPoint - position)
 		* CFrame.Angles(anglesY, anglesX, 0)
-	
+
 	if GetFFlagAvatarExperienceFlattenCameraPerspective() then
 		targetCFrame = flattenProjection(self.camera, xScreenPositionOffset, targetCFrame)
 	end
-	
+
 	if instant then
 		self.camera.CFrame = targetCFrame
 	else
