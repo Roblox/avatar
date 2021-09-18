@@ -268,6 +268,7 @@ function CharacterManager.new(store)
 		r15Model.HumanoidRootPart.Anchored = true
 
 		self.r6 = Players:CreateHumanoidModelFromDescription(Instance.new("HumanoidDescription"), Enum.HumanoidRigType.R6)
+		self.r6.Name = "CharacterR6"
 		if self.r6:FindFirstChild("Animate") then
 			local animations = self.r6.Animate:GetChildren()
 			local folder = Instance.new("Folder")
