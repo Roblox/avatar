@@ -33,6 +33,7 @@ function CategoryContent:init()
 
 	self.isTouched = false
 	self.ref = Roact.createRef()
+	self.isUnmounted = false
 
 	self.lockNavigationCallback = function()
 		self:setState({
@@ -45,6 +46,10 @@ function CategoryContent:init()
 	end
 
 	self.unlockNavigationCallback = function()
+		if self.isUnmounted then
+			return
+		end
+		
 		self:setState({
 			enableNavigation = true,
 		})
@@ -107,6 +112,8 @@ end
 
 function CategoryContent:willUnmount()
 	self:disconnectListeners()
+	
+	self.isUnmounted = true
 end
 
 function CategoryContent:disconnectListeners()
