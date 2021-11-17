@@ -15,6 +15,8 @@ local LeaveCatalogToAvatarPrompt =
 local CatalogContextMenu = require(Modules.AvatarExperience.Catalog.Components.ItemDetails.CatalogContextFrame)
 local CategoryFiltersPrompt = require(Modules.AvatarExperience.Catalog.Components.Search.Prompts.CategoryFiltersPrompt)
 local PriceFilterPrompt = require(Modules.AvatarExperience.Catalog.Components.Search.Prompts.PriceFilterPrompt)
+local LayeredClothingR6SwitchPrompt = require(Modules.AvatarExperience.AvatarEditor.Components.Prompts.LayeredClothingR6SwitchPrompt)
+local R15UpgradePrompt = require(Modules.AvatarExperience.AvatarEditor.Components.Prompts.R15UpgradePrompt)
 
 local GetFFlagCatalogSortAndFilters = function() return false end
 
@@ -33,6 +35,7 @@ local OverlayWithBackground = {
 	[OverlayType.SignUpBirthdayPickerOverlay] = true,
 	[OverlayType.CategoryFiltersPrompt] = true,
 	[OverlayType.PriceFilterPrompt] = true,
+	[OverlayType.LayeredClothingR6SwitchPrompt] = true,
 }
 
 local OverlayComponent = {
@@ -40,6 +43,8 @@ local OverlayComponent = {
 	[OverlayType.CatalogContextMenu] = CatalogContextMenu,
 	[OverlayType.CategoryFiltersPrompt] = CategoryFiltersPrompt,
 	[OverlayType.PriceFilterPrompt] = PriceFilterPrompt,
+	[OverlayType.LayeredClothingR6SwitchPrompt] = LayeredClothingR6SwitchPrompt,
+	[OverlayType.R15UpgradePrompt] = R15UpgradePrompt,
 }
 
 local CentralOverlay = Roact.PureComponent:extend("CentralOverlay")
@@ -98,7 +103,7 @@ function CentralOverlay:render()
 end
 
 CentralOverlay = RoactRodux.UNSTABLE_connect2(
-	function(state, props)
+	function(state, _props)
 		local overlayType = state.CentralOverlay.OverlayType
 
 		return {

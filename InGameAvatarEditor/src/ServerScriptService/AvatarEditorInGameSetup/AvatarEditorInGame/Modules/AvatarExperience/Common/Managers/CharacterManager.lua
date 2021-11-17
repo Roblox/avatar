@@ -25,9 +25,10 @@ local AvatarEditorUtils = require(Modules.AvatarExperience.AvatarEditor.Utils)
 local AvatarExperienceConstants = require(Modules.AvatarExperience.Common.Constants)
 local CatalogConstants = require(Modules.AvatarExperience.Catalog.CatalogConstants)
 
+local humanoidDescriptionFromState = require(Modules.Util.humanoidDescriptionFromState)
+
 local UseTempHacks = require(Modules.Config.UseTempHacks)
 
-local FFlagLuaAppEnableAERedesign = function() return true end
 local IsLuaCatalogPageEnabled = true
 
 
@@ -161,11 +162,7 @@ local function getUserOutfitIdForBundle(bundleDetails)
 end
 
 local function getOutfits(state)
-	if FFlagLuaAppEnableAERedesign() then
-		return state.AvatarExperience.AvatarEditor.Outfits
-	else
-		return state.AEAppReducer.AEOutfits
-	end
+	return state.AvatarExperience.AvatarEditor.Outfits
 end
 
 local function getToolIdForBundle(state, bundleId)
@@ -204,51 +201,19 @@ local function wasTryingOnTool(state, tryOn)
 end
 
 local function getEquippedAssets(state)
-	if FFlagLuaAppEnableAERedesign() then
-		return state.AvatarExperience.AvatarEditor.Character.EquippedAssets
-	else
-		return state.AEAppReducer.AECharacter.AEEquippedAssets
-	end
+	return state.AvatarExperience.AvatarEditor.Character.EquippedAssets
 end
 
 local function getAvatarType(state)
-	if FFlagLuaAppEnableAERedesign() then
-		return state.AvatarExperience.AvatarEditor.Character.AvatarType
-	else
-		return state.AEAppReducer.AECharacter.AEAvatarType
-	end
+	return state.AvatarExperience.AvatarEditor.Character.AvatarType
 end
 
 local function getAvatarScales(state)
-	if FFlagLuaAppEnableAERedesign() then
-		return state.AvatarExperience.AvatarEditor.Character.AvatarScales
-	else
-		return state.AEAppReducer.AECharacter.AEAvatarScales
-	end
+	return state.AvatarExperience.AvatarEditor.Character.AvatarScales
 end
 
 local function getBodyColors(state)
-	if FFlagLuaAppEnableAERedesign() then
-		return state.AvatarExperience.AvatarEditor.Character.BodyColors
-	else
-		return state.AEAppReducer.AECharacter.AEBodyColors
-	end
-end
-
-local function compareHumanoidDescriptions(humanoidDescriptionA, humanoidDescriptionB)
-	for _, name in pairs(HumanoidDescriptionIdToName) do
-		if humanoidDescriptionA[name] ~= humanoidDescriptionB[name] then return true end
-	end
-
-	for _, name in pairs(HumanoidDescriptionScaleToName) do
-		if humanoidDescriptionA[name] ~= humanoidDescriptionB[name] then return true end
-	end
-
-	for _, name in pairs(HumanoidDescriptionBodyColorIdToName) do
-		if humanoidDescriptionA[name] ~= humanoidDescriptionB[name] then return true end
-	end
-
-	return false
+	return state.AvatarExperience.AvatarEditor.Character.BodyColors
 end
 
 function CharacterManager.new(store)
@@ -329,10 +294,7 @@ function CharacterManager:initializeModel(state)
 	end
 
 	self.currentCharacter.Parent = self.characterRoot
-	self:updateHumanoidDescriptionAssets()
-	self:updateHumanoidDescriptionScales()
-	self:updateHumanoidDescriptionBodyColors()
-	self:updateHumanoidDescriptionEmotes()
+	self.humanoidDescription = humanoidDescriptionFromState(self.store:getState(), --[[includeTryOn =]] true)
 	self.bodyColorManager:manageDefaultClothing(equippedAssets, false)
 	self:applyHumanoidDescription(true)
 
@@ -357,118 +319,6 @@ function CharacterManager:start()
 	self.animationManager:start()
 	self.bodyColorManager:start()
 end
-
-function CharacterManager:updateHumanoidDescriptionAssets(removeTryOn)
-	local state = self.store:getState()
-	local equippedAssets = getEquippedAssets(state)
-	if not equippedAssets then
-		Logging.warn("CharacterManager: Equipped assets has not been initialized!")
-		return
-	end
-
-	for _, humanoidDescriptionProperty in pairs(HumanoidDescriptionIdToName) do
-		self.humanoidDescription[humanoidDescriptionProperty] = ""
-	end
-
-	for assetType, assets in pairs(equippedAssets) do
-		local propertyName = HumanoidDescriptionIdToName[assetType]
-		if propertyName and assetType ~= AvatarExperienceConstants.AssetTypes.Gear then
-			self.humanoidDescription[propertyName] = table.concat(assets, ",")
-		end
-	end
-
-	if not IsLuaCatalogPageEnabled or removeTryOn then
-		return
-	end
-
-	-- Try on items take priority over equipped items.
-	local tryOnItem = state.AvatarExperience.AvatarScene.TryOn.SelectedItem
-
-	if tryOnItem.itemType == CatalogConstants.ItemType.Asset then
-		local assetId = tryOnItem.itemId
-		local assetTypeId = tryOnItem.itemSubType
-
-		if assetId and assetTypeId ~= AvatarExperienceConstants.AssetTypes.Gear then
-			local humanoidDescriptionProp = HumanoidDescriptionIdToName[assetTypeId]
-			if humanoidDescriptionProp then
-				self.humanoidDescription[humanoidDescriptionProp] = assetId
-			end
-		end
-	end
-end
-
-function CharacterManager:updateHumanoidDescriptionScales()
-	local scales = getAvatarScales(self.store:getState())
-	for scale, percentage in pairs(scales) do
-		self.humanoidDescription[HumanoidDescriptionScaleToName[scale]] = percentage
-	end
-end
-
-function CharacterManager:updateHumanoidDescriptionBodyColors()
-	local bodyColors = getBodyColors(self.store:getState())
-	for id, bodyColor in pairs(bodyColors) do
-		self.humanoidDescription[HumanoidDescriptionBodyColorIdToName[id]] = BrickColor.new(bodyColor).Color
-	end
-end
-
-function CharacterManager:updateHumanoidDescriptionEmotes()
-	local slotInfo = self.store:getState().AvatarExperience.AvatarEditor.EquippedEmotes.slotInfo
-
-	local emotes = {}
-	local equipedEmotes = {}
-
-	for key, emoteInfo in pairs(slotInfo) do
-		local emoteName = "Emote" .. key
-		emotes[emoteName] = {tonumber(emoteInfo.assetId)}
-		table.insert(equipedEmotes, {
-			Slot = emoteInfo.position,
-			Name = emoteName,
-		})
-	end
-
-	self.humanoidDescription:SetEmotes(emotes)
-	self.humanoidDescription:SetEquippedEmotes(equipedEmotes)
-end
-
-local humanoidDescriptionProps = {
-	"BackAccessory",
-	"FaceAccessory",
-	"FrontAccessory",
-	"HairAccessory",
-	"HatAccessory",
-	"NeckAccessory",
-	"ShouldersAccessory",
-	"WaistAccessory",
-	"Face",
-	"Head",
-	"LeftArm",
-	"LeftLeg",
-	"RightArm",
-	"RightLeg",
-	"Torso",
-	"BodyTypeScale",
-	"DepthScale",
-	"HeadScale",
-	"HeightScale",
-	"ProportionScale",
-	"WidthScale",
-	"GraphicTShirt",
-	"Pants",
-	"Shirt",
-	"HeadColor",
-	"LeftArmColor",
-	"LeftLegColor",
-	"RightArmColor",
-	"RightLegColor",
-	"TorsoColor",
-	"ClimbAnimation",
-	"FallAnimation",
-	"IdleAnimation",
-	"JumpAnimation",
-	"RunAnimation",
-	"SwimAnimation",
-	"WalkAnimation",
-}
 
 function CharacterManager:applyHumanoidDescription(incrementCharacterModelVersion,
 	incrementTryOnCharacterModelVersion, humanoidDescriptionOverride)
@@ -496,9 +346,7 @@ function CharacterManager:applyHumanoidDescription(incrementCharacterModelVersio
 		Caveat: if multiple modifications have been requested by the user, as many coroutines will exist and all of them will reapply the
 		same, shared humanoidDescription (that contains the latest changes) again. But they will return immediately because of the caching
 		mechanism in the C++ layer. --]]
-		local humanoidDescriptionCopy = humanoidDescription:Clone()
 		self.currentCharacter.Humanoid:ApplyDescription(humanoidDescription)
-
 
 		if self.currentCharacter == self.r15 then
 			self:adjustHeightToStandOnPlatform(self.currentCharacter)
@@ -569,35 +417,16 @@ function CharacterManager:update(newState, oldState)
 	local updateAssets = curEquipped ~= oldEquipped
 	local updateTryOn = curTryOn ~= oldTryOn
 
-	local applyHumanoidDescription = false
-	if updateAssets or updateTryOn then
-		self:updateHumanoidDescriptionAssets()
-		if updateAssets or curTryOn.itemType == CatalogConstants.ItemType.Asset or curTryOn.itemId == nil then
-			applyHumanoidDescription = true
-		end
-	end
-
-	if updateScales then
-		self:updateHumanoidDescriptionScales()
-		applyHumanoidDescription = true
-	end
-
-	if updateBodyColors then
-		self:updateHumanoidDescriptionBodyColors()
-		applyHumanoidDescription = true
-	end
-
 	local updateEmotes = newState.AvatarExperience.AvatarEditor.EquippedEmotes.slotInfo
 		~= oldState.AvatarExperience.AvatarEditor.EquippedEmotes.slotInfo
 
-	if updateEmotes then
-		self:updateHumanoidDescriptionEmotes()
+	local applyHumanoidDescription = false
+	if updateAssets or updateTryOn or updateScales or updateBodyColors or updateEmotes then
+		self.humanoidDescription = humanoidDescriptionFromState(self.store:getState(), --[[includeTryOn =]] true)
 		applyHumanoidDescription = true
 	end
 
-	if updateAssets or updateTryOn or updateBodyColors then
-		self.bodyColorManager:manageDefaultClothing(curEquipped, updateBodyColors)
-	end
+	self.bodyColorManager:manageDefaultClothing(curEquipped, updateBodyColors)
 
 	if IsLuaCatalogPageEnabled then
 		if curTryOn.itemType == CatalogConstants.ItemType.Bundle then
@@ -803,12 +632,6 @@ end
 function CharacterManager:stop()
 	self.r6.Parent = ReplicatedStorage
 	self.r15.Parent = ReplicatedStorage
-
-	-- Remove anything that is being tried on.
-	local curEquipped = getEquippedAssets(self.store:getState())
-	self:updateHumanoidDescriptionAssets(--[[removeTryOn = ]] true)
-	self.bodyColorManager:manageDefaultClothing(curEquipped, false)
-	self:applyHumanoidDescription(true)
 
 	local equippedAssets = getEquippedAssets(self.store:getState())
 	local tool = equippedAssets and equippedAssets[AvatarExperienceConstants.AssetTypes.Gear]

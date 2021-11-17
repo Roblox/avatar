@@ -21,7 +21,6 @@ local Constants = require(Modules.NotLApp.Constants)
 local ClearSelectedItem = require(Modules.AvatarExperience.Common.Actions.ClearSelectedItem)
 
 local UseTempHacks = require(Modules.Config.UseTempHacks)
-local SaveOnExit = require(Modules.Config.SaveOnExit)
 
 local GetFFlagLuaAppEnableAERedesign = function() return true end
 local GetFFlagAvatarExperienceUnselectTryOnFix = function() return true end
@@ -222,7 +221,7 @@ function AvatarSceneManager:onDestroy()
 end
 
 return RoactRodux.UNSTABLE_connect2(
-	function(state, props)
+	function(state, _props)
 		return {
 			avatarPageLoaded = GetFFlagLuaAppEnableAERedesign() and state.AvatarExperience.AvatarEditor.PageLoaded,
 			avatarEditorFullView = FFlagLuaAppEnableAERedesign() and state.AvatarExperience.AvatarEditor.FullView or false,

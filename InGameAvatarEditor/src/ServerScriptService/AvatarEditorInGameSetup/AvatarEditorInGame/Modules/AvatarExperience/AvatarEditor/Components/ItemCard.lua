@@ -1,7 +1,5 @@
 local Modules = game:GetService("Players").LocalPlayer.PlayerGui.AvatarEditorInGame.Modules
 
-local Players = game:GetService("Players")
-
 local UIBlox = require(Modules.Packages.UIBlox)
 local ItemTile = UIBlox.Tile.ItemTile
 local ItemTileEnums = UIBlox.Tile.ItemTileEnums
@@ -25,9 +23,12 @@ local AvatarEditorConstants = require(Modules.AvatarExperience.AvatarEditor.Cons
 local Categories = require(Modules.AvatarExperience.AvatarEditor.Categories)
 local ToggleUIFullView = require(Modules.AvatarExperience.AvatarEditor.Actions.ToggleUIFullView)
 
+local OverlayType = require(Modules.NotLApp.Enum.OverlayType)
+local SetCentralOverlay = require(Modules.NotLApp.Actions.SetCentralOverlay)
+
 local CreateOutfit = require(Modules.AvatarExperience.AvatarEditor.Thunks.CreateOutfit)
 
-local buildCostumeInfoFromHumanoidDescription = require(Modules.Util.buildCostumeInfoFromHumanoidDescription)
+local LayeredClothingEnabled = require(Modules.Config.LayeredClothingEnabled)
 
 local FFlagAvatarEditorShowEquippedItem = true
 
@@ -84,28 +85,35 @@ function ItemCard:init()
 		local isCostume = self.props.isCostume
 		local costumeInfo = self.props.costumeInfo
 		local assetTypeId = isCostume and Constants.Outfits or page.AssetTypeId
+		if LayeredClothingEnabled and not isCostume then
+			assetTypeId = self.props.assetTypeId
+		end
+
 		local isSelected = self.props.isWearingAssetOrCostume
 		local toggleEquipAsset = self.props.toggleEquipAsset
 		local equipOutfitThunk = self.props.equipOutfitThunk
 		local isUIFullView = self.props.isUIFullView
 
+		if LayeredClothingEnabled then
+			local isLayered = AvatarExperienceConstants.LayeredClothingOrder[assetTypeId] ~= nil
+			local isR6 = self.props.avatarType == AvatarExperienceConstants.AvatarType.R6
+
+			local onSwitchSelected = function()
+				toggleEquipAsset(assetTypeId, itemId)
+			end
+
+			if isR6 and (not isSelected) and isLayered then
+				self.props.openLayeredClothingR15Upgrade(onSwitchSelected)
+				return
+			end
+		end
+
 		if isCostume then
-			--[[
-			coroutine.wrap(function()
-				local humanoidDescription = Players:GetHumanoidDescriptionFromOutfitId(itemId)
-
-				local costumeInfo = buildCostumeInfoFromHumanoidDescription(humanoidDescription)
-
-				equipOutfitThunk(costumeInfo)
-			end)()
-			--]]
-
 			if costumeInfo then
 				equipOutfitThunk(costumeInfo)
 			else
 				Logging.warn("Tried equipping a costume without any costume data!")
 			end
-			--]]
 		else
 			toggleEquipAsset(assetTypeId, itemId)
 		end
@@ -180,6 +188,7 @@ local function mapStateToProps(state, props)
 	local costumeInfo = state.AvatarExperience.AvatarEditor.Outfits[itemId]
 	local name, thumbnail
 
+	local itemData
 	if itemId then
 		if props.isCostume then
 			local costumeData = state.AvatarExperience.AvatarEditor.Outfits[props.itemId]
@@ -187,7 +196,7 @@ local function mapStateToProps(state, props)
 			local thumbType = CatalogConstants.ThumbnailType.Outfit
 			thumbnail = CatalogUtils.MakeRbxThumbUrl(thumbType, itemId, THUMBNAIL_SIZE, THUMBNAIL_SIZE)
 		else
-			local itemData = ItemData(state.AvatarExperience.Common, props.itemId, CatalogConstants.ItemType.Asset)
+			itemData = ItemData(state.AvatarExperience.Common, props.itemId, CatalogConstants.ItemType.Asset)
 			name = itemData and itemData.name or nil
 			local thumbType = CatalogConstants.ThumbnailType.Asset
 			thumbnail = CatalogUtils.MakeRbxThumbUrl(thumbType, itemId, THUMBNAIL_SIZE, THUMBNAIL_SIZE)
@@ -198,10 +207,12 @@ local function mapStateToProps(state, props)
 		currentPage = AvatarExperienceUtils.getCurrentPage(state),
 		name = name,
 		thumbnail = thumbnail,
+		assetTypeId = itemData and itemData.assetType or nil,
 		isWearingAssetOrCostume = isWearingAssetOrCostume,
 		isUIFullView = state.AvatarExperience.AvatarEditor.UIFullView,
 		costumeInfo = costumeInfo,
 		page = page,
+		avatarType = state.AvatarExperience.AvatarEditor.Character.AvatarType,
 	}
 end
 
@@ -216,11 +227,17 @@ local function mapDispatchToProps(dispatch)
 		equipOutfitThunk = function(outfit)
 			dispatch(EquipOutfit(outfit))
 		end,
-		openCreateCostumesPrompt = function(pageFilter)
+		openCreateCostumesPrompt = function(_pageFilter)
 			dispatch(CreateOutfit(nil, ""))
 		end,
 		toggleUIFullView = function()
 			dispatch(ToggleUIFullView())
+		end,
+		openLayeredClothingR15Upgrade = function(onSwitchSelected)
+			dispatch(SetCentralOverlay(OverlayType.R15UpgradePrompt, {
+				bodyText = "Feature.Avatar.Label.LayeredClothingR15Warning",
+				onSwitchSelected = onSwitchSelected,
+			}))
 		end,
 	}
 end

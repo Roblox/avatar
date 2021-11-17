@@ -35,7 +35,7 @@ local function connectInGameAssetGrants(store)
 				
 				if outfitsData[1] then
 					
-					store:dispatch(GrantOutfit(nil, tostring(outfitsData[1].id), false))
+					store:dispatch(GrantOutfit(tostring(outfitsData[1].id), false))
 				end
 			end
 		end)	
@@ -51,7 +51,7 @@ local function connectInGameAssetGrants(store)
 
 			if outfitsData[1] then
 				print(tostring(outfitsData[1].id))
-				store:dispatch(GrantOutfit(nil, tostring(outfitsData[1].id), true))
+				store:dispatch(GrantOutfit(tostring(outfitsData[1].id), true))
 			end
 		end
 	end)

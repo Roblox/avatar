@@ -1,4 +1,5 @@
-local Players = game:GetService("Players")
+local Modules = game:GetService("Players").LocalPlayer.PlayerGui.AvatarEditorInGame.Modules
+local LayeredClothingEnabled = require(Modules.Config.LayeredClothingEnabled)
 
 local HumanoidDescriptionIdToName = {
 	["2"]  = "GraphicTShirt",
@@ -120,7 +121,7 @@ local function compareHumanoidDescProps(propA, propB)
 		table.sort(splitA)
 		table.sort(splitB)
 
-		for i, v in ipairs(splitA) do
+		for i, _ in ipairs(splitA) do
 			if splitA[i] ~= splitB[i] then
 				return true
 			end
@@ -132,30 +133,69 @@ local function compareHumanoidDescProps(propA, propB)
 	return propA ~= propB
 end
 
+local function layeredAccessoriesDifferent(descA, descB)
+	local accessoriesA = descA:GetAccessories(--[[includeRidgit = ]] false)
+	local accessoriesB = descB:GetAccessories(--[[includeRidgit = ]] false)
+
+	if #accessoriesA ~= #accessoriesB then
+		return true
+	end
+
+	local function toIdList(accessories)
+		local idList = {}
+
+		for _, metadata in ipairs(accessories) do
+			table.insert(idList, metadata.AssetId)
+		end
+
+		return idList
+	end
+
+	local idsA = toIdList(accessoriesA)
+	local idsB = toIdList(accessoriesB)
+
+	table.sort(idsA)
+	table.sort(idsB)
+
+	for i, v in ipairs(idsA) do
+		if v ~= idsB[i] then
+			return true
+		end
+	end
+
+	return false
+end
+
 local function areDescriptionsDifferent(descA, descB)
 	for _, name in pairs(HumanoidDescriptionIdToName) do
 		if compareHumanoidDescProps(descA[name], descB[name]) then
 			--print("Bad", name, currentHumanoidDescription[name], humanoidDescription[name])
-			return true 
+			return true
 		end
 	end
 
 	for _, name in pairs(HumanoidDescriptionScaleToName) do
-		if descA[name] ~= descB[name] then 
+		if descA[name] ~= descB[name] then
 			--print("Bad", name, currentHumanoidDescription[name], humanoidDescription[name])
-			return true 
+			return true
 		end
 	end
 
 	for _, name in pairs(HumanoidDescriptionBodyColorIdToName) do
 		if descA[name] ~= descB[name] then
 			--print("Bad", name, currentHumanoidDescription[name], humanoidDescription[name])
-			return true 
+			return true
 		end
 	end
 
 	if emotesDifferent(descA, descB) then
 		return true
+	end
+
+	if LayeredClothingEnabled then
+		if layeredAccessoriesDifferent(descA, descB) then
+			return true
+		end
 	end
 
 	return false

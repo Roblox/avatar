@@ -41,8 +41,6 @@ end
 
 return function(categoryIndex, subcategoryIndex, nextPageCursor)
 	return function(store)
-		local startTime = tick()
-
 		local state = store:getState()
 		if not categoryIndex then
 			categoryIndex = state.AvatarExperience.Catalog.Categories.category
@@ -75,14 +73,11 @@ return function(categoryIndex, subcategoryIndex, nextPageCursor)
 			end
 		end
 
-		return Promise.new(function(resolve, reject)
+		return Promise.new(function(resolve, _reject)
 			coroutine.wrap(function()
 				local pagesObject = nextPageCursor
 				if pagesObject then
-					local start = tick()
-					--print("Calling AdvanceToNextPageAsync")
 					pagesObject:AdvanceToNextPageAsync()
-					--print("Calling AdvanceToNextPageAsync took", tick() - start)
 				else
 					local searchParams = catalogSearchParamsFromCategory(category, extraAssetTypes, extraBundleTypes)
 
@@ -94,8 +89,7 @@ return function(categoryIndex, subcategoryIndex, nextPageCursor)
 					data = tableToCamelCaseKeys(pagesObject:GetCurrentPage()),
 				}
 
-				local state = store:getState()
-
+				state = store:getState()
 				local sortResults = SortResults.fromSearchItemsDetails(data)
 				if nextPageCursor then
 					store:dispatch(CatalogAppendSortData(categoryIndex, subcategoryIndex, sortResults))

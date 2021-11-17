@@ -26,8 +26,10 @@ local RecommendedItems = require(Modules.AvatarExperience.AvatarEditor.Component
 local AvatarExperienceConstants = require(Modules.AvatarExperience.Common.Constants)
 local AvatarEditorConstants = require(Modules.AvatarExperience.AvatarEditor.Constants)
 local GetUserInventory = require(Modules.AvatarExperience.AvatarEditor.Thunks.GetUserInventory)
+local GetUserInventoryLC = require(Modules.AvatarExperience.AvatarEditor.Thunks.GetUserInventoryLC)
 local GetUserOutfits = require(Modules.AvatarExperience.AvatarEditor.Thunks.GetUserOutfits)
 
+local LayeredClothingEnabled = require(Modules.Config.LayeredClothingEnabled)
 local IsCatalogEnabled = require(Modules.Config.IsCatalogEnabled)
 
 local SHIMMER_CARDS_TO_DISPLAY = AvatarExperienceConstants.ShimmerCardsToDisplay
@@ -92,9 +94,22 @@ function ItemsList:init()
 		if isCostumesPage then
 			return self.props.getUserOutfits(assetTypeKey)
 		else
-			return self.props.getUserInventory(assetTypeKey)
+			if LayeredClothingEnabled then
+				return self.props.getUserInventory(self.props.categoryInfo)
+			else
+				return self.props.getUserInventory(assetTypeKey)
+			end
 		end
 	end
+end
+
+function ItemsList:getShowAddCostume()
+	if LayeredClothingEnabled then
+		if self.props.assetTypeKey ~= AvatarEditorConstants.EditableCharacterKey then
+			return false
+		end
+	end
+	return true
 end
 
 function ItemsList:renderItemsList()
@@ -116,7 +131,7 @@ function ItemsList:renderItemsList()
 	local listPadding = listWidth > SIDE_PADDING and SIDE_PADDING or 0
 
 	local itemsList = items
-	if items and itemsContainsCostumes and items[1] ~= ADD_COSTUME_BUTTON then
+	if items and itemsContainsCostumes and items[1] ~= ADD_COSTUME_BUTTON and self:getShowAddCostume() then
 		itemsList = Cryo.List.join({ ADD_COSTUME_BUTTON }, items)
 	end
 
@@ -308,7 +323,7 @@ function ItemsList:didMount()
 	end
 end
 
-function ItemsList:didUpdate(previousProps, previousState)
+function ItemsList:didUpdate(previousProps, _previousState)
 	local appPage = self.props.appPage
 	local categoryInfo = self.props.categoryInfo
 	local dataStatus = self.props.dataStatus
@@ -343,13 +358,17 @@ function ItemsList:didUpdate(previousProps, previousState)
 	end
 end
 
-local function mapStateToProps(state, props)
+local function mapStateToProps(state, _props)
 	local categoryIndex = state.AvatarExperience.AvatarEditor.Categories.category
 	local subcategoryIndex = state.AvatarExperience.AvatarEditor.Categories.subcategory
 	local emoteSlot = state.AvatarExperience.AvatarEditor.EquippedEmotes.selectedSlot
 	local emotesSlotInfo = state.AvatarExperience.AvatarEditor.EquippedEmotes.slotInfo
 	local categoryInfo = AvatarExperienceUtils.GetCategoryInfo(Categories, categoryIndex, subcategoryIndex)
 	local assetTypeKey = categoryInfo.AssetTypeId and categoryInfo.AssetTypeId or categoryInfo.Name
+	if LayeredClothingEnabled then
+		assetTypeKey = categoryInfo.SearchUuid or categoryInfo.Name
+	end
+
 	local isCostumesPage = categoryInfo.RenderCostumeItemTiles == true
 	local page = AvatarExperienceUtils.GetCategoryInfo(Categories, categoryIndex, subcategoryIndex)
 
@@ -388,10 +407,19 @@ local function mapStateToProps(state, props)
 end
 
 local function mapDispatchToProps(dispatch)
-	return {
+	local getUserInventory
+	if LayeredClothingEnabled then
+		getUserInventory = function(categoryInfo)
+			return dispatch(GetUserInventoryLC(categoryInfo))
+		end
+	else
 		getUserInventory = function(assetType)
 			return dispatch(GetUserInventory(assetType))
-		end,
+		end
+	end
+
+	return {
+		getUserInventory = getUserInventory,
 
 		getUserOutfits = function(costumeType)
 			return dispatch(GetUserOutfits(costumeType))

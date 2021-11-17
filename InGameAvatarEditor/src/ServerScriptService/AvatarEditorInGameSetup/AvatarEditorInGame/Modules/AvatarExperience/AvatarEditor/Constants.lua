@@ -25,6 +25,8 @@ local Constants = {
 	AddCostumeButton = "ADD_COSTUME_BUTTON",
 
 	CharacterKey = "Character",
+	EditableCharacterKey = "EditableCharacter",
+	PurchasedCharacterKey = "PurchasedCharacter",
 	ReachedLastPage = "LastPage",
 	Outfits = "Outfits",
 

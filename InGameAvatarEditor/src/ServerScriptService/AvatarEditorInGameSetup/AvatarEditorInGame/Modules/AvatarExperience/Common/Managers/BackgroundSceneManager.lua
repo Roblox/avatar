@@ -17,7 +17,6 @@ local BackgroundSceneManager = {}
 BackgroundSceneManager.__index = BackgroundSceneManager
 
 local HIGH_QUALITY_EMITTER_RATE = 20
-local LOW_QUALITY_EMITTER_RATE = 160
 
 local NewSceneInformation = {
 	Lighting = {
@@ -200,17 +199,22 @@ end
 
 function BackgroundSceneManager:recordOldLighting()
 	self.oldLightingInfo = {}
+	self.oldLightingInstances = {}
 
 	for key, _ in pairs(NewSceneInformation.Lighting) do
 		if key ~= "Sky" then
 			self.oldLightingInfo[key] = Lighting[key]
 		end
 	end
+
+	local children = Lighting:GetChildren()
+	for _, instance in ipairs(children) do
+		instance.Parent = nil
+		table.insert(self.oldLightingInstances, instance)
+	end
 end
 
 function BackgroundSceneManager:updateLighting()
-	self:recordOldLighting()
-
 	Lighting.Brightness = NewSceneInformation.Lighting.Brightness
 	Lighting.ColorShift_Bottom = NewSceneInformation.Lighting.ColorShift_Bottom
 	Lighting.ColorShift_Top = NewSceneInformation.Lighting.ColorShift_Top
@@ -345,6 +349,7 @@ function BackgroundSceneManager:start()
 	local page = AvatarExperienceUtils.getCurrentPage(self.store:getState())
 	local currentTheme = "dark" --string.lower(NotificationService.SelectedTheme)
 
+	self:recordOldLighting()
 	self:updateTheme(currentTheme)
 
 	table.insert(self.connections, self.store.changed:connect(function(state, oldState)
@@ -405,6 +410,13 @@ function BackgroundSceneManager:resetLighting()
 		end
 		self.oldLightingInfo = nil
 	end
+
+	if self.oldLightingInstances then
+		for _, instance in ipairs(self.oldLightingInstances) do
+			instance.Parent = Lighting
+		end
+		self.oldLightingInstances = nil
+	end
 end
 
 function BackgroundSceneManager:stop()
@@ -412,7 +424,7 @@ function BackgroundSceneManager:stop()
 		connection:disconnect()
 	end
 	self.connections = {}
-	self.newBackgroundScene.Parent = ReplicatedStorage
+	self.newBackgroundScene.Parent = nil
 	self.ParticleEffectManager:stop()
 	self:resetLighting()
 end

@@ -58,7 +58,8 @@ local Players = game:GetService("Players")
 local Modules = Players.LocalPlayer.PlayerGui.AvatarEditorInGame.Modules
 local MockId = require(Modules.NotLApp.MockId)
 
-local FFlagAvatarEditorUpdateRecommendations = function() return true end
+local LayeredClothingEnabled = require(Modules.Config.LayeredClothingEnabled)
+local AvatarExperienceConstants = require(Modules.AvatarExperience.Common.Constants)
 
 local AssetInfo = {}
 
@@ -145,7 +146,7 @@ function AssetInfo.fromGetRecommendedItemsData(recommendedItem, assetTypeId)
 		assetInfo.priceInRobux = 0
 	end
 
-	if FFlagAvatarEditorUpdateRecommendations() and recommendedItem.product then
+	if recommendedItem.product then
 		assetInfo.product = {
 			id = tostring(recommendedItem.product.id)
 		}
@@ -168,7 +169,7 @@ end
 
 function AssetInfo.fromGetCatalogItemData(newData)
 	local assetInfo = {}
-	
+
 	local assetType = newData.assetType
 	if type(assetType) == "string" then
 		assetType = Enum.AvatarAssetType[assetType].Value
@@ -227,7 +228,7 @@ end
 
 function AssetInfo.fromSortResults(newData)
 	local assetInfo = {}
-	
+
 	local assetType = newData.assetType
 	if type(assetType) == "string" then
 		assetType = Enum.AvatarAssetType[assetType].Value
@@ -275,7 +276,11 @@ function AssetInfo.fromInventoryFetch(newData, assetType)
 	assetInfo.receivedFromInventoryFetch = true
 	assetInfo.id = tostring(newData.assetId)
 	assetInfo.name = newData.assetName or newData.name
-	assetInfo.assetType = assetType
+	if LayeredClothingEnabled then
+		assetInfo.assetType = AvatarExperienceConstants.AssetTypeIds[newData.assetType]
+	else
+		assetInfo.assetType = assetType
+	end
 
 	return assetInfo
 end

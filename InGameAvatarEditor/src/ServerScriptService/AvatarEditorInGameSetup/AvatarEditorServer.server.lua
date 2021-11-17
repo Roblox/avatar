@@ -57,12 +57,18 @@ LoadAnimationServer.OnServerInvoke = function(player, assetId)
 end
 
 AvatarEditorClosed.OnServerEvent:Connect(function(player)
+	local characterInfo = Players:GetCharacterAppearanceInfoAsync(player.UserId)
 	local newHumanoidDescription = Players:GetHumanoidDescriptionFromUserId(player.UserId)
 
 	if player.Character then
 		local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
 		if humanoid and humanoid.Health > 0 then
-			humanoid:ApplyDescription(newHumanoidDescription, Enum.AssetTypeVerification.Always)
+			local rigType = humanoid.RigType
+			if rigType.Name == characterInfo.playerAvatarType then
+				humanoid:ApplyDescription(newHumanoidDescription, Enum.AssetTypeVerification.Always)
+			else
+				player:LoadCharacter()
+			end
 		end
 	end
 end)

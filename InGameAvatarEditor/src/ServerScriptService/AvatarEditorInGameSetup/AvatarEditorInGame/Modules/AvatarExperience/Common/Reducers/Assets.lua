@@ -134,7 +134,7 @@ return function(state, action)
 
 	elseif action.type == SetAssetInfoFromInventoryFetch.name then
 		ArgCheck.isType(action.assets, "table", "assets must be a table.")
-		ArgCheck.isType(action.assetTypeId, "string", "assetTypeId must be a string.")
+		ArgCheck.isTypeOrNil(action.assetTypeId, "string", "assetTypeId must be a string.")
 
 		local changedAssets = {}
 		local assetTypeId = action.assetTypeId

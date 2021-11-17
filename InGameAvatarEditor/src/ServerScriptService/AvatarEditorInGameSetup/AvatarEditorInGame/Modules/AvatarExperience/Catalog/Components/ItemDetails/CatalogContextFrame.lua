@@ -27,10 +27,7 @@ local ItemData = require(Modules.AvatarExperience.Common.Selectors.ItemData)
 local PerformFetch = require(Modules.NotLApp.Thunks.PerformFetch)
 local DeviceOrientationMode = require(Modules.NotLApp.DeviceOrientationMode)
 local RetrievalStatus = require(Modules.NotLApp.Enum.RetrievalStatus)
-local Url = require(Modules.NotLApp.Http.Url)
 local CloseCentralOverlay = require(Modules.NotLApp.Thunks.CloseCentralOverlay)
-
-local UseTempHacks = require(Modules.Config.UseTempHacks)
 
 local ContextualMenu = UIBlox.App.Menu.ContextualMenu
 local MenuDirection = UIBlox.App.Menu.MenuDirection
@@ -40,12 +37,10 @@ local Images = UIBlox.App.ImageSet.Images
 local FAVORITE_ICON = Images["icons/actions/favoriteOff"]
 local FAVORITED_ICON = Images["icons/actions/favoriteOn"]
 local CUSTOMIZE_ICON = Images["icons/menu/customize"]
-local REPORT_ICON = Images["icons/actions/feedback"]
 
 local ROBLOX_USER_ID = "1"
 local BOTTOM_GAP = 76
 
-local FFlagLuaCatalogPremiumUpsellModal = true
 local FFlagEnableAvatarExperienceLandingPage = false
 
 local CatalogContextFrame = Roact.PureComponent:extend("CatalogContextFrame")
@@ -103,20 +98,6 @@ function CatalogContextFrame:init()
 			self.props.setBundleFavorite(userId, itemId, not isFavorited)
 		end
 	end
-
-	self.reportItem = function(localizedReportText)
-		local itemId = self.props.itemId
-		local linkPage = Url.BASE_URL .. "/abusereport/asset?id=" .. itemId
-
-		self.props.navigateDown({
-			name = AppPage.GenericWebPage,
-			detail = linkPage,
-			extraProps = {
-				title = localizedReportText,
-			},
-		})
-		self.props.closePrompt()
-	end
 end
 
 function CatalogContextFrame:didMount()
@@ -170,17 +151,6 @@ function CatalogContextFrame:renderLocalized(localized)
 		text = favoriteText,
 		onActivated = self.favoriteItem,
 	})
-
-	if not UseTempHacks then
-		if isReportVisible and itemType == CatalogConstants.ItemType.Asset then
-			table.insert(contextualMenuButtons,
-			{
-				icon = REPORT_ICON,
-				text = reportText,
-				onActivated = function() self.reportItem(reportText) end,
-			})
-		end
-	end
 
 	local isPortrait = deviceOrientation == DeviceOrientationMode.Portrait
 	local navWidth = isPortrait and 0 or AvatarExperienceConstants.LandscapeNavWidth

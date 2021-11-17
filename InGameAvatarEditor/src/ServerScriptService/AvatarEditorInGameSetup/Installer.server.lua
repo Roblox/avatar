@@ -10,8 +10,7 @@ local function installServerScripts()
 end
 
 local ClientScripts = {
-	"AvatarEditorManager",
-	"areDescriptionsDifferent",
+	"AvatarEditorInterface",
 	"InGameStarterScript"
 }
 

@@ -1,5 +1,4 @@
 local Players = game:GetService("Players")
-local NotificationService = game:GetService("NotificationService")
 
 local Modules = Players.LocalPlayer.PlayerGui.AvatarEditorInGame.Modules
 
@@ -10,6 +9,9 @@ local UIBlox = require(Modules.Packages.UIBlox)
 local CatalogConstants = require(Modules.AvatarExperience.Catalog.CatalogConstants)
 local CatalogUtils = require(Modules.AvatarExperience.Catalog.CatalogUtils)
 local FetchCatalogPageData = require(Modules.AvatarExperience.Catalog.Thunks.FetchCatalogPageData)
+local FetchCatalogPageDataLC = require(Modules.AvatarExperience.Catalog.Thunks.FetchCatalogPageDataLC)
+
+local LayeredClothingEnabled = require(Modules.Config.LayeredClothingEnabled)
 
 local LoadableImage = UIBlox.Loading.LoadableImage
 local PageButton = require(Modules.AvatarExperience.Common.Components.Landing.PageButton)
@@ -152,8 +154,13 @@ end
 local function mapDispatchToProps(dispatch)
 	return {
 		fetchSortContents = function(categoryIndex, subcategoryIndex)
-			return dispatch(FetchCatalogPageData(categoryIndex, subcategoryIndex,
-				nil))
+			if LayeredClothingEnabled then
+				return dispatch(FetchCatalogPageDataLC(categoryIndex, subcategoryIndex,
+					nil))
+			else
+				return dispatch(FetchCatalogPageData(categoryIndex, subcategoryIndex,
+					nil))
+			end
 		end,
 	}
 end

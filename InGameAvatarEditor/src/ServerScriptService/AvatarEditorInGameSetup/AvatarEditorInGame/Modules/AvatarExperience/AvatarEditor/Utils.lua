@@ -1,6 +1,7 @@
 local Players = game:GetService("Players")
 local Modules = Players.LocalPlayer.PlayerGui.AvatarEditorInGame.Modules
 local Constants = require(Modules.AvatarExperience.Common.Constants)
+local memoize = require(Modules.Common.memoize)
 
 local AvatarEditorUtils = {}
 
@@ -134,6 +135,19 @@ local function rgb_to_xyz(c)
 
 	return xyz
 end
+
+AvatarEditorUtils.hasLayeredAssetsEquipped = memoize(function(equippedAssets)
+	if not equippedAssets then
+		return false
+	end
+
+	for assetType, _ in pairs(equippedAssets) do
+		if Constants.LayeredClothingOrder[assetType] then
+			return true
+		end
+	end
+	return false
+end)
 
 local function pivot_xyz(n)
 	if (n > 0.008856) then

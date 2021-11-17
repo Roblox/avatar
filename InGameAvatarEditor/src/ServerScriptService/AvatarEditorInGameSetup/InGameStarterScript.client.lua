@@ -1,80 +1,27 @@
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local AvatarEditorService = game:GetService("AvatarEditorService")
-local StarterGui = game:GetService("StarterGui")
 local Players = game:GetService("Players")
 
 local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
 script.Parent.ShowAndLeave.Enabled = true
 local showButton = script.Parent.ShowAndLeave.EditAvatarButton
 local leaveButton = script.Parent.ShowAndLeave.LeaveButton
 
-local areDescriptionsDifferent = require(script.Parent.areDescriptionsDifferent)
+local AvatarEditorInterface = require(script.Parent.AvatarEditorInterface)
 
-local AvatarEditorManager
-local firstTime = true
-
-local function initStuff()
-	spawn(function()
-		print("Calling Prompt allow inventory read access!")
-		AvatarEditorService:PromptAllowInventoryReadAccess()
-	end)
-
-	print("Waiting on Allow inventory read access event")
-	local result = AvatarEditorService.PromptAllowInventoryReadAccessCompleted:Wait()
-
-	print("Got result of PromptAllowInventoryReadAccessCompleted", result)
-
-	if result == Enum.AvatarPromptResult.Success then
-		AvatarEditorManager = require(script.Parent.AvatarEditorManager)
-		firstTime = false
-		return true
-	end
-
-	return false
-end
+local touchGuiWasEnabled = false
 
 local function showAvatarEditor()
 	showButton.Visible = false
 
-	if firstTime then
-		if not initStuff() then
-			showButton.Visible = true
-			return
-		end
+	local touchGui = PlayerGui:FindFirstChild("TouchGui")
+	if touchGui then
+		touchGuiWasEnabled = touchGui.Enabled
+		touchGui.Enabled = false
 	end
 
-	--lighting.WhiteSky.Parent = replicatedStorage
-	AvatarEditorManager:showAvatarEditor()
+	AvatarEditorInterface:showAvatarEditor()
 	leaveButton.Visible = true
-end
-
-local function isDifferentToLocalHumanoid(humanoidDescription, avatarType)
-	local currentHumanoidDescription
-	local rigType
-	if Players.LocalPlayer.Character then
-		local humanoid = Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-		if humanoid then
-			currentHumanoidDescription = humanoid:GetAppliedDescription()
-			rigType = humanoid.RigType
-		end
-	end
-
-	if not currentHumanoidDescription then
-		currentHumanoidDescription = Players:GetHumanoidDescriptionFromUserId(Players.LocalPlayer.UserId)
-		rigType = avatarType
-	end
-
-	if rigType ~= avatarType then
-		return true
-	end
-
-	if areDescriptionsDifferent(currentHumanoidDescription, humanoidDescription) then
-		return true
-	end
-
-	return false
 end
 
 local leaving = false
@@ -85,30 +32,12 @@ local function hideAvatarEditor()
 	end
 	leaving = true
 
-	local wasOpen = AvatarEditorManager:closeItemDetails()
+	AvatarEditorInterface:hideAvatarEditor(--[[saveOnClose =]] true)
 
-	if wasOpen then
-		wait(2)
+	local touchGui = PlayerGui:FindFirstChild("TouchGui")
+	if touchGui then
+		touchGui.Enabled = touchGuiWasEnabled
 	end
-
-	local characterRoot = game.Workspace.CharacterRoot
-	local humanoidDescription
-	local avatarType
-	if characterRoot:FindFirstChild("CharacterR15") then
-		avatarType = Enum.HumanoidRigType.R15
-		humanoidDescription = characterRoot.CharacterR15.Humanoid:GetAppliedDescription()
-	else
-		avatarType = Enum.HumanoidRigType.R6
-		humanoidDescription = characterRoot.CharacterR6.Humanoid:GetAppliedDescription()
-	end
-
-	if isDifferentToLocalHumanoid(humanoidDescription, avatarType) then
-		AvatarEditorService:PromptSaveAvatar(humanoidDescription, avatarType)
-
-		AvatarEditorService.PromptSaveAvatarCompleted:Wait()
-	end
-
-	AvatarEditorManager:hideAvatarEditor()
 
 	game.Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
 	if LocalPlayer.Character then

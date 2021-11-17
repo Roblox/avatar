@@ -74,6 +74,9 @@ local Constants = {
 	OutfitInfoKey = "avatar.outfit.info.",
 	RecommendedItemsKey = "avatar.recommendedItems.",
 
+	CommunityCreationsCategoryFilter = "CommunityCreations",
+	PremiumCategoryFilter = "Premium",
+
 	LandscapeNavWidth = 0.6,
 	LandscapeSceneWidth = 0.4,
 
@@ -137,6 +140,54 @@ local Constants = {
 		SwimAnim = "54",
 		WalkAnim = "55",
 		Emote = "61",
+		TShirtAccessory = "64",
+		ShirtAccessory = "65",
+		PantsAccessory = "66",
+		JacketAccessory = "67",
+		SweaterAccessory = "68",
+		ShortsAccessory = "69",
+		LeftShoeAccessory = "70",
+		RightShoeAccessory = "71",
+		DressSkirtAccessory = "72",
+	},
+
+	AssetTypeIds = {
+		TShirt = "2",
+		Hat = "8",
+		HairAccessory = "41",
+		FaceAccessory = "42",
+		NeckAccessory = "43",
+		ShoulderAccessory = "44",
+		FrontAccessory = "45",
+		BackAccessory = "46",
+		WaistAccessory = "47",
+		Shirt = "11",
+		Pants = "12",
+		Gear = "19",
+		Head = "17",
+		Face = "18",
+		Torso = "27",
+		RightArm = "28",
+		LeftArm = "29",
+		LeftLeg = "30",
+		RightLeg = "31",
+		ClimbAnimation = "48",
+		FallAnimation = "50",
+		IdleAnimation = "51",
+		JumpAnimation = "52",
+		RunAnimation = "53",
+		SwimAnimation = "54",
+		WalkAnimation = "55",
+		EmoteAnimation = "61",
+		TShirtAccessory = "64",
+		ShirtAccessory = "65",
+		PantsAccessory = "66",
+		JacketAccessory = "67",
+		SweaterAccessory = "68",
+		ShortsAccessory = "69",
+		LeftShoeAccessory = "70",
+		RightShoeAccessory = "71",
+		DressSkirtAccessory = "72",
 	},
 
 	AssetTypeNames = {
@@ -168,6 +219,39 @@ local Constants = {
 		["55"] = "WalkAnim",
 		["61"] = "Emote",
 	},
+}
+
+Constants.AssetTypeIdToAccessoryTypeEnum = {
+	["8"] = Enum.AccessoryType.Hat,
+	["41"] = Enum.AccessoryType.Hair,
+	["42"] = Enum.AccessoryType.Face,
+	["43"] = Enum.AccessoryType.Neck,
+	["44"] = Enum.AccessoryType.Shoulder,
+	["45"] = Enum.AccessoryType.Front,
+	["46"] = Enum.AccessoryType.Back,
+	["47"] = Enum.AccessoryType.Waist,
+	["64"] = Enum.AccessoryType.TShirt,
+	["65"] = Enum.AccessoryType.Shirt,
+	["66"] = Enum.AccessoryType.Pants,
+	["67"] = Enum.AccessoryType.Jacket,
+	["68"] = Enum.AccessoryType.Sweater,
+	["69"] = Enum.AccessoryType.Shorts,
+	["70"] = Enum.AccessoryType.LeftShoe,
+	["71"] = Enum.AccessoryType.RightShoe,
+	["72"] = Enum.AccessoryType.DressSkirt,
+}
+
+Constants.LayeredClothingOrder = {
+	[Constants.AssetTypes.LeftShoeAccessory] = 3,
+	[Constants.AssetTypes.RightShoeAccessory] = 3,
+	[Constants.AssetTypes.PantsAccessory] = 4, -- Layered Pants
+	[Constants.AssetTypes.ShortsAccessory] = 5,
+	[Constants.AssetTypes.DressSkirtAccessory] = 6,
+	[Constants.AssetTypes.TShirtAccessory] = 7, -- Layered TShirt
+	[Constants.AssetTypes.ShirtAccessory] = 8, -- Layered Shirt
+	[Constants.AssetTypes.SweaterAccessory] = 9,
+	[Constants.AssetTypes.JacketAccessory] = 10,
+	[Constants.AssetTypes.Hair] = 11,
 }
 
 -- Body parts the camera can focus on
@@ -364,6 +448,51 @@ Constants.HumanoidDescriptionBodyColorIdToName = {
 	rightArmColorId = "RightArmColor",
 	rightLegColorId = "RightLegColor",
 	torsoColorId = "TorsoColor",
+}
+
+Constants.CatalogStructureLC = {
+	Categories = {
+		Featured = 1,
+		Recommended = 1,
+		Characters = 2,
+		Clothing = 3,
+		Accessories = 4,
+		Body = 5,
+		Animation = 6,
+		Emotes = 7,
+	},
+	Subcategories = {
+		-- Recommended
+		Featured = 1,
+		Limited = 2,
+		Community = 3,
+		Premium = 4,
+		-- Clothing
+		Shirts = 1,
+		TShirts = 2,
+		Sweaters = 3,
+		Jackets = 4,
+		Pants = 5,
+		DressesAndSkirts = 6,
+		Shorts = 7,
+		Shoes = 8,
+		ClassicShirts = 9,
+		ClassicTShirts = 10,
+		ClassicPants = 11,
+		-- Accessories
+		Hats = 1,
+		Face = 2,
+		Neck = 3,
+		Shoulder = 4,
+		Front = 5,
+		Back = 6,
+		Waist = 7,
+		Gear = 8,
+		-- Body
+		Hair = 1,
+		Heads = 2,
+		Faces = 3,
+	},
 }
 
 return Constants

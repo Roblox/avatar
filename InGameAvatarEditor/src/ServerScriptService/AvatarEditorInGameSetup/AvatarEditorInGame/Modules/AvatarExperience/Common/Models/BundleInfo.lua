@@ -139,8 +139,9 @@ function BundleInfo.fromMultigetBundle(newBundleInfo)
 	bundleInfo.bundleType = getBundleType(newBundleInfo.bundleType)
 
 	local includedItemList = {}
-	if newBundleInfo.items then
-		for _, bundleItem in pairs(newBundleInfo.items) do
+	local bundleItems = newBundleInfo.items or newBundleInfo.bundledItems
+	if bundleItems then
+		for _, bundleItem in pairs(bundleItems) do
 			local includedItem = {
 				id = tostring(bundleItem.id),
 				type = bundleItem.type,

@@ -1,70 +1,21 @@
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local BrowserService = game:GetService("BrowserService")
-local NotificationService = game:GetService("NotificationService")
 local GuiService = game:GetService("GuiService")
 local LocalizationService = game:GetService("LocalizationService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local AvatarEvents = ReplicatedStorage:WaitForChild("AvatarEvents")
-local avatarEditorClosed = AvatarEvents.AvatarEditorClosed
+local BrowserService = game:GetService("BrowserService")
+local NotificationService = game:GetService("NotificationService")
+local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
-while not LocalPlayer do
-	Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
-	LocalPlayer = Players.LocalPlayer
-end
 
 local PlayerGui = LocalPlayer.PlayerGui
-while not PlayerGui do
-	LocalPlayer.ChildAdded:Wait()
-	PlayerGui = LocalPlayer.PlayerGui
-end
-
-local AvatarEditorInGame = script.Parent
-
-local AvatarEditorInGameScreenGui = AvatarEditorInGame:FindFirstChild("AvatarEditorInGame")
-
-AvatarEditorInGameScreenGui.Parent = PlayerGui
-
-local Modules = PlayerGui:WaitForChild("AvatarEditorInGame"):WaitForChild("Modules")
-
-local SetItemDetailsProps = require(Modules.Setup.Actions.SetItemDetailsProps)
-
-local InGameAssetGranter = require(Modules.InGameEditor.InGameAssetGranter)
-
-local UIBlox = require(Modules.Packages.UIBlox)
-
-UIBlox.init()
+local AvatarEditorInGame = LocalPlayer.PlayerGui.AvatarEditorInGame
+local Modules = LocalPlayer.PlayerGui.AvatarEditorInGame.Modules
 
 local Roact = require(Modules.Packages.Roact)
-
-Roact.setGlobalConfig({
-	elementTracing = true,
-})
-
-local RoactLocalization = require(Modules.Services.RoactLocalization)
-local AppBrowserService = require(Modules.Services.AppBrowserService)
-local AppNotificationService = require(Modules.Services.AppNotificationService)
-local AppGuiService = require(Modules.Services.AppGuiService)
-local AppRunService = require(Modules.Services.AppRunService)
-local AppUserInputService = require(Modules.Services.AppUserInputService)
-
-local RoactServices = require(Modules.Common.RoactServices)
-
-local ProviderContainer = require(Modules.Setup.ProviderContainer)
-
-local AvatarSceneManager = require(Modules.AvatarExperience.Common.Managers.AvatarSceneManager)
-
-local AppDarkTheme = require(Modules.Common.DarkTheme)
-local AppFont = require(Modules.Common.Gotham)
-
 local Rodux = require(Modules.Packages.Rodux)
 local RoactRodux = require(Modules.Packages.RoactRodux)
-
-local Localization = require(Modules.Localization.Localization)
-local LocalizationProvider = require(Modules.Localization.LocalizationProvider)
+local UIBlox = require(Modules.Packages.UIBlox)
 
 local SetScreenSize = require(Modules.Setup.Actions.SetScreenSize)
 local SetGlobalGuiInset = require(Modules.Setup.Actions.SetGlobalGuiInset)
@@ -72,14 +23,31 @@ local SetLocalUserId = require(Modules.Setup.Actions.SetLocalUserId)
 local SetDeviceOrientation = require(Modules.Setup.Actions.SetDeviceOrientation)
 local SetLastInputType = require(Modules.Setup.Actions.SetLastInputType)
 
-local RunAvatarSceneManager = require(Modules.Setup.Actions.RunAvatarSceneManager)
-
-local NavigateDown = require(Modules.NotLApp.Thunks.NavigateDown)
-local AppPage = require(Modules.NotLApp.AppPage)
-
 local DeviceOrientationMode = require(Modules.NotLApp.DeviceOrientationMode)
 
+local Localization = require(Modules.Localization.Localization)
+local LocalizationProvider = require(Modules.Localization.LocalizationProvider)
+
+local RoactServices = require(Modules.Common.RoactServices)
+local RoactLocalization = require(Modules.Services.RoactLocalization)
+local AppBrowserService = require(Modules.Services.AppBrowserService)
+local AppNotificationService = require(Modules.Services.AppNotificationService)
+local AppGuiService = require(Modules.Services.AppGuiService)
+local AppRunService = require(Modules.Services.AppRunService)
+local AppUserInputService = require(Modules.Services.AppUserInputService)
+
+local InGameAssetGranter = require(Modules.InGameEditor.InGameAssetGranter)
+
+local ProviderContainer = require(Modules.Setup.ProviderContainer)
+local AppDarkTheme = require(Modules.Common.DarkTheme)
+local AppFont = require(Modules.Common.Gotham)
+
 local DisplayedPageManager = require(Modules.InGameEditor.Components.DisplayedPageManager)
+local AvatarSceneManager = require(Modules.AvatarExperience.Common.Managers.AvatarSceneManager)
+
+local NavigateDown = require(Modules.NotLApp.Thunks.NavigateDown)
+local RunAvatarSceneManager = require(Modules.Setup.Actions.RunAvatarSceneManager)
+local AppPage = require(Modules.NotLApp.AppPage)
 
 local Reducer = Rodux.combineReducers({
 	AvatarExperience = require(Modules.AvatarExperience.Common.Reducers.AvatarExperience),
@@ -120,44 +88,35 @@ local function screenSizeUpdated(store, absSize)
 	end
 end
 
-local InGameManager = {}
-InGameManager.__index = InGameManager
-
-function InGameManager.new()
-	local self = setmetatable({}, InGameManager)
-
-	--AvatarEditorService:PromptAllowInventoryReadAccess()
-
-	--AvatarEditorService.PromptAllowInventoryReadAccessCompleted:Wait()
-
+local function SetupAvatarEditor()
 	local providers = {}
 
 	local middlewareList = { Rodux.thunkMiddleware }
 
-	self.store = Rodux.Store.new(Reducer, nil, middlewareList)
+	local store = Rodux.Store.new(Reducer, nil, middlewareList)
 
-	InGameAssetGranter(self.store)
+	InGameAssetGranter(store)
 
-	screenSizeUpdated(self.store, PlayerGui.AvatarEditorInGame.AbsoluteSize)
-	PlayerGui.AvatarEditorInGame:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-		screenSizeUpdated(self.store, PlayerGui.AvatarEditorInGame.AbsoluteSize)
+	screenSizeUpdated(store, AvatarEditorInGame.AbsoluteSize)
+	AvatarEditorInGame:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		screenSizeUpdated(store, AvatarEditorInGame.AbsoluteSize)
 	end)
 
-	self.store:dispatch(SetLastInputType(UserInputService:GetLastInputType()))
+	store:dispatch(SetLastInputType(UserInputService:GetLastInputType()))
 
 	UserInputService.LastInputTypeChanged:Connect(function(lastInputType)
-		self.store:dispatch(SetLastInputType(lastInputType))
+		store:dispatch(SetLastInputType(lastInputType))
 	end)
 
-	self.store:dispatch(SetLocalUserId(tostring(LocalPlayer.UserId)))
+	store:dispatch(SetLocalUserId(tostring(LocalPlayer.UserId)))
 
 	local topLeft, bottomRight = GuiService:GetGuiInset()
-	self.store:dispatch(SetGlobalGuiInset(topLeft.X, topLeft.Y, bottomRight.X, bottomRight.Y))
+	store:dispatch(SetGlobalGuiInset(topLeft.X, topLeft.Y, bottomRight.X, bottomRight.Y))
 
 	table.insert(providers, {
 		class = RoactRodux.StoreProvider,
 		props = {
-			store = self.store,
+			store = store,
 		},
 	})
 
@@ -209,39 +168,12 @@ function InGameManager.new()
 	})
 
 	Roact.mount(root, PlayerGui.AvatarEditorInGame, "AvatarEditor")
-	self.store:dispatch(NavigateDown({ name = AppPage.AvatarEditor }))
+	store:dispatch(NavigateDown({ name = AppPage.AvatarEditor }))
 
 	PlayerGui.AvatarEditorInGame.Enabled = false
-	self.store:dispatch(RunAvatarSceneManager(false))
-	self.isShowingAvatarEditor = false
+	store:dispatch(RunAvatarSceneManager(false))
 
-	return self
+	return store
 end
 
-function InGameManager:showAvatarEditor()
-	self.isShowingAvatarEditor = true
-	PlayerGui.AvatarEditorInGame.Enabled = true
-	self.store:dispatch(RunAvatarSceneManager(true))
-end
-
-function InGameManager:hideAvatarEditor()
-	self.isShowingAvatarEditor = false
-	PlayerGui.AvatarEditorInGame.Enabled = false
-	self.store:dispatch(RunAvatarSceneManager(false))
-
-	avatarEditorClosed:FireServer()
-end
-
-function InGameManager:closeItemDetails()
-	local wasOpen = self.store:getState().ItemDetailsProps.itemId ~= nil
-
-	self.store:dispatch(SetItemDetailsProps(nil, nil))
-
-	return wasOpen
-end
-
-function InGameManager:showingAvatarEditor()
-	return self.isShowingAvatarEditor
-end
-
-return InGameManager.new()
+return SetupAvatarEditor

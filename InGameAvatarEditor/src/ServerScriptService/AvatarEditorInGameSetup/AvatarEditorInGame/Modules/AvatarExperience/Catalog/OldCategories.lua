@@ -10,18 +10,74 @@ local Featured = {
 	Name = "Featured",
 	Title = "Feature.Catalog.Label.Featured",
 
-	ApiCategory = "Featured", Enum.CatalogCategoryFilter.Collectibles
+	ExtraAssetTypes = {
+		Enum.AvatarAssetType.Hat,
+		Enum.AvatarAssetType.Face,
+		Enum.AvatarAssetType.HairAccessory,
+		Enum.AvatarAssetType.FaceAccessory,
+		Enum.AvatarAssetType.NeckAccessory,
+		Enum.AvatarAssetType.ShoulderAccessory,
+		Enum.AvatarAssetType.FrontAccessory,
+		Enum.AvatarAssetType.BackAccessory,
+		Enum.AvatarAssetType.WaistAccessory,
+	},
+	ExtraBundleTypes = {
+		Enum.BundleType.Animations,
+		Enum.BundleType.BodyParts,
+	},
+
+	ApiCategory = Enum.CatalogCategoryFilter.Featured,
 	Subcategories = {
 		[1] = {
 			Name = "Limited",
 			Title = "Feature.Catalog.Label.Limited",
 
-			ApiCategory = "Collectibles",
+			ExtraAssetTypes = {
+				Enum.AvatarAssetType.Hat,
+				Enum.AvatarAssetType.Face,
+				Enum.AvatarAssetType.HairAccessory,
+				Enum.AvatarAssetType.FaceAccessory,
+				Enum.AvatarAssetType.NeckAccessory,
+				Enum.AvatarAssetType.ShoulderAccessory,
+				Enum.AvatarAssetType.FrontAccessory,
+				Enum.AvatarAssetType.BackAccessory,
+				Enum.AvatarAssetType.WaistAccessory,
+			},
+			ApiCategory = Enum.CatalogCategoryFilter.Collectibles,
 		},
 		[2] = {
 			Name = "Community",
 			Title = "Feature.Catalog.Label.Community",
-			ApiCategory = "CommunityCreations"
+
+			ExtraAssetTypes = {
+				Enum.AvatarAssetType.Hat,
+				Enum.AvatarAssetType.Face,
+				Enum.AvatarAssetType.HairAccessory,
+				Enum.AvatarAssetType.FaceAccessory,
+				Enum.AvatarAssetType.NeckAccessory,
+				Enum.AvatarAssetType.ShoulderAccessory,
+				Enum.AvatarAssetType.FrontAccessory,
+				Enum.AvatarAssetType.BackAccessory,
+				Enum.AvatarAssetType.WaistAccessory,
+				Enum.AvatarAssetType.EmoteAnimation,
+			},
+			ApiCategory = Enum.CatalogCategoryFilter.CommunityCreations
+		},
+		[3] = {
+			Name = "Premium",
+			Title = "Feature.Catalog.Label.Premium",
+
+			ExtraAssetTypes = {
+				Enum.AvatarAssetType.Hat,
+				Enum.AvatarAssetType.HairAccessory,
+				Enum.AvatarAssetType.FaceAccessory,
+				Enum.AvatarAssetType.NeckAccessory,
+				Enum.AvatarAssetType.ShoulderAccessory,
+				Enum.AvatarAssetType.FrontAccessory,
+				Enum.AvatarAssetType.BackAccessory,
+				Enum.AvatarAssetType.WaistAccessory,
+			},
+			ApiCategory = Enum.CatalogCategoryFilter.Premium,
 		},
 	},
 }
@@ -30,15 +86,14 @@ local Characters = {
 	Name = "Characters",
 	Title = "Feature.Catalog.Label.Characters",
 
-	ApiCategory = "BodyParts",
-	ApiSubcategory = "Bundles",
+	ApiCategory = Enum.BundleType.BodyParts,
 }
 
 local Body = {
 	Name = "Body",
 	Title = "Feature.Catalog.Label.Body",
 
-	ApiCategory = "BodyParts",
+	ApiCategory = {Enum.AvatarAssetType.HairAccessory, Enum.AvatarAssetType.Head, Enum.AvatarAssetType.Face},
 	Subcategories = {
 		[1] = {
 			Name = "Hair",
@@ -47,8 +102,7 @@ local Body = {
 			CameraFocus = Constants.FocusType.Head,
 			CameraZoomRadius = 8.5,
 
-			ApiCategory = "Accessories",
-			ApiSubcategory = "HairAccessories",
+			ApiCategory = Enum.AvatarAssetType.HairAccessory,
 		},
 		[2] = {
 			Name = "Head",
@@ -57,7 +111,7 @@ local Body = {
 			CameraFocus = Constants.FocusType.Head,
 			CameraZoomRadius = 6.5,
 
-			ApiSubcategory = "Heads",
+			ApiCategory = Enum.AvatarAssetType.Head,
 		},
 		[3] = {
 			Name = "Faces",
@@ -66,7 +120,7 @@ local Body = {
 			CameraFocus = Constants.FocusType.Face,
 			CameraZoomRadius = 7,
 
-			ApiSubcategory = "Faces",
+			ApiCategory = Enum.AvatarAssetType.Face,
 		},
 	},
 }
@@ -76,7 +130,9 @@ local Clothing = {
 	Name = "Clothing",
 	Title = "Feature.Catalog.Label.Clothing",
 
-	ApiCategory = "Accessories",
+	ApiCategory = {Enum.AvatarAssetType.Hat, --[[Enum.AvatarAssetType.Shirt, Enum.AvatarAssetType.TShirt, Enum.AvatarAssetType.Pants, --]]
+		Enum.AvatarAssetType.FaceAccessory, Enum.AvatarAssetType.NeckAccessory, Enum.AvatarAssetType.ShoulderAccessory, Enum.AvatarAssetType.FrontAccessory,
+		Enum.AvatarAssetType.BackAccessory, Enum.AvatarAssetType.WaistAccessory},
 	Subcategories = {
 		[1] = {
 			Name = "Hats",
@@ -85,8 +141,7 @@ local Clothing = {
 			CameraFocus = Constants.FocusType.Head,
 			CameraZoomRadius = 11,
 
-			ApiCategory = "Accessories",
-			ApiSubcategory = "Hats",
+			ApiCategory = Enum.AvatarAssetType.Hat,
 		},
 		[2] = {
 			Name = "Shirts",
@@ -95,8 +150,7 @@ local Clothing = {
 			CameraFocus = Constants.FocusType.Arms,
 			CameraZoomRadius = 12,
 
-			ApiCategory = "Clothing",
-			ApiSubcategory = "Shirts",
+			ApiCategory = Enum.AvatarAssetType.Shirt,
 		},
 		[3] = {
 			Name = "T-Shirts",
@@ -105,8 +159,7 @@ local Clothing = {
 			CameraFocus = Constants.FocusType.Arms,
 			CameraZoomRadius = 12,
 
-			ApiCategory = "Clothing",
-			ApiSubcategory = "Tshirts",
+			ApiCategory = Enum.AvatarAssetType.TShirt,
 		},
 		[4] = {
 			Name = "Pants",
@@ -115,8 +168,7 @@ local Clothing = {
 			CameraFocus = Constants.FocusType.Legs,
 			CameraZoomRadius = 12,
 
-			ApiCategory = "Clothing",
-			ApiSubcategory = "Pants",
+			ApiCategory = Enum.AvatarAssetType.Pants,
 		},
 		[5] = {
 			Name = "Face Accessories",
@@ -125,8 +177,7 @@ local Clothing = {
 			CameraFocus = Constants.FocusType.Face,
 			CameraZoomRadius = 4.5,
 
-			ApiCategory = "Accessories",
-			ApiSubcategory = "FaceAccessories",
+			ApiCategory = Enum.AvatarAssetType.FaceAccessory,
 		},
 		[6] = {
 			Name = "Neck Accessories",
@@ -135,8 +186,7 @@ local Clothing = {
 			CameraFocus = Constants.FocusType.Neck,
 			CameraZoomRadius = 9,
 
-			ApiCategory = "Accessories",
-			ApiSubcategory = "NeckAccessories",
+			ApiCategory = Enum.AvatarAssetType.NeckAccessory,
 		},
 		[7] = {
 			Name = "Shoulder Accessories",
@@ -145,8 +195,7 @@ local Clothing = {
 			CameraFocus = Constants.FocusType.Shoulders,
 			CameraZoomRadius = 11,
 
-			ApiCategory = "Accessories",
-			ApiSubcategory = "ShoulderAccessories",
+			ApiCategory = Enum.AvatarAssetType.ShoulderAccessory,
 		},
 		[8] = {
 			Name = "Front Accessories",
@@ -155,8 +204,7 @@ local Clothing = {
 			CameraFocus = Constants.FocusType.Arms,
 			CameraZoomRadius = 9.5,
 
-			ApiCategory = "Accessories",
-			ApiSubcategory = "FrontAccessories",
+			ApiCategory = Enum.AvatarAssetType.FrontAccessory,
 		},
 		[9] = {
 			Name = "Back Accessories",
@@ -165,8 +213,7 @@ local Clothing = {
 			CameraFocus = Constants.FocusType.Arms,
 			CameraZoomRadius = 21,
 
-			ApiCategory = "Accessories",
-			ApiSubcategory = "BackAccessories",
+			ApiCategory = Enum.AvatarAssetType.BackAccessory,
 		},
 		[10] = {
 			Name = "Waist Accessories",
@@ -175,14 +222,7 @@ local Clothing = {
 			CameraFocus = Constants.FocusType.Waist,
 			CameraZoomRadius = 17,
 
-			ApiCategory = "Accessories",
-			ApiSubcategory = "WaistAccessories",
-		},
-		[11] = {
-			Name = "Gear",
-			Title = "Feature.Catalog.Label.Gear",
-
-			ApiCategory = "Gear",
+			ApiCategory = Enum.AvatarAssetType.WaistAccessory,
 		},
 	}
 }
@@ -191,16 +231,14 @@ local Animation = {
 	Name = "Animation",
 	Title = "Feature.Catalog.Label.Animation",
 
-	ApiCategory = "AvatarAnimations",
-	ApiSubcategory = "AnimationBundles",
+	ApiCategory = Enum.BundleType.Animations,
 	PageType = Constants.PageType.Animation,
 }
 
 local Emotes = {
 	Name = "Emotes",
 	Title = "Feature.Catalog.Label.Emotes",
-	ApiCategory = "AvatarAnimations",
-	ApiSubcategory = "EmoteAnimations",
+	ApiCategory = Enum.AvatarAssetType.EmoteAnimation,
 	PageType = Constants.PageType.Emotes,
 }
 

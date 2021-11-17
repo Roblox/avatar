@@ -17,51 +17,60 @@ return function(costumeType)
 			local state = store:getState()
 
 			return Promise.new(function(resolve, reject)
-				local pageObject = state.AvatarExperience.AvatarEditor.AssetTypeCursor[costumeType]
+				coroutine.wrap(function()
+					local pageObject = state.AvatarExperience.AvatarEditor.AssetTypeCursor[costumeType]
 
-				if pageObject == Constants.ReachedLastPage then
-					return resolve()
-				end
-
-				if pageObject then
-					local success, err = pcall(function()
-						pageObject:AdvanceToNextPageAsync()
-					end)
-					if not success then
-						warn("Error in GetUserOutfits advance" .. err)
-						return reject()
+					local outfitSource = Enum.OutfitSource.All
+					if costumeType == Constants.EditableCharacterKey then
+						outfitSource = Enum.OutfitSource.Created
+					elseif costumeType == Constants.PurchasedCharacterKey then
+						outfitSource = Enum.OutfitSource.Purchased
 					end
-				else
-					local success, err = pcall(function()
-						pageObject = AvatarEditorService:GetOutfits()
-					end)
-					if not success then
-						warn("Error in GetUserOutfits" ..err)
-						return reject()
+
+					if pageObject == Constants.ReachedLastPage then
+						return resolve()
 					end
-				end
 
-				local data = pageObject:GetCurrentPage()
+					if pageObject then
+						local success, err = pcall(function()
+							pageObject:AdvanceToNextPageAsync()
+						end)
+						if not success then
+							warn("Error in GetUserOutfits advance" .. err)
+							return reject()
+						end
+					else
+						local success, err = pcall(function()
+							pageObject = AvatarEditorService:GetOutfits(outfitSource)
+						end)
+						if not success then
+							warn("Error in GetUserOutfits" ..err)
+							return reject()
+						end
+					end
 
-				data = tableToCamelCaseKeys(data)
+					local data = pageObject:GetCurrentPage()
 
-				local costumeIds = {}
-				for _, costume in pairs(data) do
-					costumeIds[#costumeIds + 1] = tostring(costume.id)
+					data = tableToCamelCaseKeys(data)
 
-					-- Get this costume's data before showing it to prevent async problems when equipping.
-					store:dispatch(GetOutfit(costume.id, costume.isEditable))
-				end
+					local costumeIds = {}
+					for _, costume in pairs(data) do
+						costumeIds[#costumeIds + 1] = tostring(costume.id)
 
-				if pageObject.IsFinished then
-					store:dispatch(SetAssetTypeCursor(costumeType, Constants.ReachedLastPage))
-				else
-					store:dispatch(SetAssetTypeCursor(costumeType, pageObject))
-				end
+						-- Get this costume's data before showing it to prevent async problems when equipping.
+						store:dispatch(GetOutfit(costume.id, costume.isEditable))
+					end
 
-				store:dispatch(SetOwnedAssets(costumeType, costumeIds))
+					if pageObject.IsFinished then
+						store:dispatch(SetAssetTypeCursor(costumeType, Constants.ReachedLastPage))
+					else
+						store:dispatch(SetAssetTypeCursor(costumeType, pageObject))
+					end
 
-				resolve()
+					store:dispatch(SetOwnedAssets(costumeType, costumeIds))
+
+					resolve()
+				end)()
 			end)
 		end)
 end

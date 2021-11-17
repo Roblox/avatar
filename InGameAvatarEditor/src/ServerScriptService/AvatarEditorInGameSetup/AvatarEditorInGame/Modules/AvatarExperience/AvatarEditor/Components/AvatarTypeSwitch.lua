@@ -11,6 +11,13 @@ local ImageSetLabel = UIBlox.Core.ImageSet.Label
 local withLocalization = require(Modules.Packages.Localization.withLocalization)
 local Text = require(Modules.Common.Text)
 
+local OverlayType = require(Modules.NotLApp.Enum.OverlayType)
+local SetCentralOverlay = require(Modules.NotLApp.Actions.SetCentralOverlay)
+
+local AvatarEditorUtils = require(Modules.AvatarExperience.AvatarEditor.Utils)
+
+local LayeredClothingEnabled = require(Modules.Config.LayeredClothingEnabled)
+
 local Images = UIBlox.App.ImageSet.Images
 
 local SpringAnimatedItem = UIBlox.Utility.SpringAnimatedItem
@@ -61,6 +68,14 @@ function AvatarTypeSwitch:onAvatarTypeClicked()
 	local setAvatarType = self.props.setAvatarType
 	local newAvatarType = self.props.avatarType == AvatarExperienceConstants.AvatarType.R6
 		and AvatarExperienceConstants.AvatarType.R15 or AvatarExperienceConstants.AvatarType.R6
+
+	if LayeredClothingEnabled then
+		local equippedAssets = self.props.equippedAssets
+		if newAvatarType == AvatarExperienceConstants.AvatarType.R6 and AvatarEditorUtils.hasLayeredAssetsEquipped(equippedAssets) then
+			self.props.openLayeredClothingR6Switch()
+			return
+		end
+	end
 
 	setAvatarType(newAvatarType)
 end
@@ -123,7 +138,7 @@ function AvatarTypeSwitch:render()
 					BackgroundTransparency = 1,
 					Size = UDim2.new(1, 0, 1, 0),
 
-					[Roact.Event.Activated] = function(rbx)
+					[Roact.Event.Activated] = function(_rbx)
 						self:onAvatarTypeClicked()
 					end,
 				}),
@@ -183,8 +198,9 @@ function AvatarTypeSwitch:didMount()
 	self:resizeTextLabels()
 end
 
-return RoactRodux.UNSTABLE_connect2(function(state, props)
+return RoactRodux.UNSTABLE_connect2(function(state, _props)
 	return {
+			equippedAssets = state.AvatarExperience.AvatarEditor.Character.EquippedAssets,
 			avatarType = state.AvatarExperience.AvatarEditor.Character.AvatarType,
 		}
 	end,
@@ -194,6 +210,10 @@ return RoactRodux.UNSTABLE_connect2(function(state, props)
 			setAvatarType = function(newAvatarType)
 				dispatch(SetAvatarType(newAvatarType))
 			end,
+
+			openLayeredClothingR6Switch = function()
+				dispatch(SetCentralOverlay(OverlayType.LayeredClothingR6SwitchPrompt))
+			end
 		}
 	end
 )(AvatarTypeSwitch)

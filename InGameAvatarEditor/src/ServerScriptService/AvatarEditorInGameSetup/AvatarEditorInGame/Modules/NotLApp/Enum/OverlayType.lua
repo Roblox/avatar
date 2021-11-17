@@ -16,4 +16,6 @@ return {
 	SignUpBirthdayPickerOverlay = "SignUpBirthdayPickerOverlay",
 	CategoryFiltersPrompt = "CategoryFiltersPrompt",
 	PriceFilterPrompt = "PriceFilterPrompt",
+	LayeredClothingR6SwitchPrompt = "LayeredClothingR6SwitchPrompt",
+	R15UpgradePrompt = "R15UpgradePrompt",
 }

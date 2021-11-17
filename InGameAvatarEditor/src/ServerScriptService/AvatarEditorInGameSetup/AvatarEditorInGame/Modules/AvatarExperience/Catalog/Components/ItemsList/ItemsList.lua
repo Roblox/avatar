@@ -32,14 +32,15 @@ local ToggleUIFullView = require(Modules.AvatarExperience.Catalog.Thunks.ToggleU
 
 local ClearSelectedItem = require(Modules.AvatarExperience.Common.Actions.ClearSelectedItem)
 local FetchCatalogPageData = require(Modules.AvatarExperience.Catalog.Thunks.FetchCatalogPageData)
-local GetFFlagCatalogFullAvatarWifiIcon = function() return true end
+local FetchCatalogPageDataLC = require(Modules.AvatarExperience.Catalog.Thunks.FetchCatalogPageDataLC)
+
+local LayeredClothingEnabled = require(Modules.Config.LayeredClothingEnabled)
 
 local FFlagImproveCatalogPerformance = true
 
 local SIDE_PADDING = 30
 local TOP_PADDING = 15
 local TOUCH_MOVE_MIN_TIME = 0.15
-local EXPAND_BUTTON_PADDING = 12
 
 local function renderItem(itemInfo, index)
 	return Roact.createElement(CatalogItemCard, {
@@ -201,7 +202,7 @@ function ItemsList:renderWithStyle(stylePalette)
 		}, {
 			FailedState = showFailedState and Roact.createElement(EmptyStatePage, {
 				onRetry = self.fetchSortContents,
-				ClipsDescendants = GetFFlagCatalogFullAvatarWifiIcon(),
+				ClipsDescendants = true,
 			}),
 
 			ItemsList = not showFailedState and self:renderItemsList(stylePalette),
@@ -215,12 +216,12 @@ function ItemsList:render()
     end)
 end
 
-function ItemsList:onTouchEnded(touch, gameProcessedEvent)
+function ItemsList:onTouchEnded(_touch, _gameProcessedEvent)
 	self.isTouched = false
 	self.touchStarted = nil
 end
 
-function ItemsList:onTouchMoved(touch, gameProcessedEvent)
+function ItemsList:onTouchMoved(touch, _gameProcessedEvent)
 	self.isTouched = false
 
 	local listFrame = self.listFrameRef.current
@@ -254,7 +255,7 @@ function ItemsList:didMount()
 	self.fetchSortContents()
 end
 
-function ItemsList:onTouchSwipe(direction, numberOfTouches, gameProcessedEvent)
+function ItemsList:onTouchSwipe(direction, numberOfTouches, _gameProcessedEvent)
 	if not numberOfTouches == 1 then
 		return
 	end
@@ -274,7 +275,7 @@ function ItemsList:onTouchSwipe(direction, numberOfTouches, gameProcessedEvent)
 	end
 end
 
-function ItemsList:didUpdate(previousProps, previousState)
+function ItemsList:didUpdate(previousProps, _previousState)
 	local changedCategory = self.props.categoryIndex ~= previousProps.categoryIndex
 	local changedSubcategory = self.props.subcategoryIndex ~= previousProps.subcategoryIndex
 	local newAppPage = self.props.appPage
@@ -300,9 +301,15 @@ function ItemsList:didUpdate(previousProps, previousState)
 		end
 
 		if newAppPage == AppPage.Catalog then
-			local touchMovedConnection = UserInputService.TouchMoved:Connect(function(...) self:onTouchMoved(...) end)
-			local touchSwipeConnection = UserInputService.TouchSwipe:Connect(function(...) self:onTouchSwipe(...) end)
-			local touchEndedConnection = UserInputService.TouchEnded:Connect(function(...) self:onTouchEnded(...) end)
+			local touchMovedConnection = UserInputService.TouchMoved:Connect(function(...)
+				self:onTouchMoved(...)
+			end)
+			local touchSwipeConnection = UserInputService.TouchSwipe:Connect(function(...)
+				self:onTouchSwipe(...)
+			end)
+			local touchEndedConnection = UserInputService.TouchEnded:Connect(function(...)
+				self:onTouchEnded(...)
+			end)
 			self.connections[#self.connections + 1] = touchMovedConnection
 			self.connections[#self.connections + 1] = touchSwipeConnection
 			self.connections[#self.connections + 1] = touchEndedConnection
@@ -362,14 +369,24 @@ end
 local function mapDispatchToProps(dispatch)
     return {
         fetchSortContents = function(categoryIndex, subcategoryIndex)
-			return dispatch(FetchCatalogPageData(categoryIndex, subcategoryIndex,
-				nil))
+			if LayeredClothingEnabled then
+				return dispatch(FetchCatalogPageDataLC(categoryIndex, subcategoryIndex,
+					nil))
+			else
+				return dispatch(FetchCatalogPageData(categoryIndex, subcategoryIndex,
+					nil))
+			end
         end,
 
 		loadMoreItems = function(categoryIndex,
 			subcategoryIndex, nextPageCursor)
-			return dispatch(FetchCatalogPageData(categoryIndex, subcategoryIndex,
-				nextPageCursor))
+			if LayeredClothingEnabled then
+				return dispatch(FetchCatalogPageDataLC(categoryIndex, subcategoryIndex,
+					nextPageCursor))
+			else
+				return dispatch(FetchCatalogPageData(categoryIndex, subcategoryIndex,
+					nextPageCursor))
+			end
 		end,
 
 		deselectPeekedItem = function()

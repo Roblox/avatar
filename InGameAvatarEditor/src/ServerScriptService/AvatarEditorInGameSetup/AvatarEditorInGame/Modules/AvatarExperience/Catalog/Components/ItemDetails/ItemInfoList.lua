@@ -3,9 +3,7 @@ local Modules = game:GetService("Players").LocalPlayer.PlayerGui.AvatarEditorInG
 local Roact = require(Modules.Packages.Roact)
 local RoactRodux = require(Modules.Packages.RoactRodux)
 
-local AppPage = require(Modules.NotLApp.AppPage)
 local ItemInfoRow = require(Modules.AvatarExperience.Catalog.Components.ItemDetails.ItemInfoRow)
-local UrlBuilder = require(Modules.NotLApp.Http.UrlBuilder)
 local NavigateDown = require(Modules.NotLApp.Thunks.NavigateDown)
 
 local AvatarExperienceConstants = require(Modules.AvatarExperience.Common.Constants)
@@ -28,23 +26,6 @@ ItemInfoList.defaultProps = {
 	typeText = "",
 	showAllDividers = false,
 }
-
-function ItemInfoList:init()
-	self.viewProfile = function()
-		local creatorId = self.props.creatorId
-		if creatorId then
-			self.props.navigateDown({
-				name = AppPage.GenericWebPage,
-				detail = UrlBuilder.user.profile({
-					userId = creatorId,
-				}),
-				extraProps = {
-					titleKey = "CommonUI.Features.Label.Profile",
-				},
-			})
-		end
-	end
-end
 
 function ItemInfoList:makeItemInfoListData(localizedCategoryType)
 	local creatorText = self.props.creatorText

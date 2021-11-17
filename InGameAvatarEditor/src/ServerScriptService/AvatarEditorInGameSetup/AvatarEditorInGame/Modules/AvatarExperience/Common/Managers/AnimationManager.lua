@@ -339,7 +339,7 @@ function AnimationManager:playLookAround(animationAssets, id)
 		end
 	else
 		local currentCharacter = self.store:getState().AvatarExperience.AvatarScene.Character.CurrentCharacter
-		table.insert(assets, currentCharacter.Animations.idle)
+		table.insert(assets, currentCharacter.Animate.idle)
 	end
 
 	-- Look around animation is the lightest idle animation.
@@ -404,25 +404,25 @@ function AnimationManager:getDefaultAnimationAssets(assetTypeId, currentCharacte
 	local anims = {}
 
 	if assetTypeId == AvatarExperienceConstants.AssetTypes.ClimbAnim then
-		table.insert(anims, currentCharacter.Animations.climb)
+		table.insert(anims, currentCharacter.Animate.climb)
 	elseif assetTypeId == AvatarExperienceConstants.AssetTypes.FallAnim then
-		table.insert(anims, currentCharacter.Animations.fall)
+		table.insert(anims, currentCharacter.Animate.fall)
 	elseif assetTypeId == AvatarExperienceConstants.AssetTypes.IdleAnim then
-		table.insert(anims, currentCharacter.Animations.idle)
+		table.insert(anims, currentCharacter.Animate.idle)
 	elseif assetTypeId == AvatarExperienceConstants.AssetTypes.JumpAnim then
-		table.insert(anims, currentCharacter.Animations.jump)
+		table.insert(anims, currentCharacter.Animate.jump)
 	elseif assetTypeId == AvatarExperienceConstants.AssetTypes.RunAnim then
-		table.insert(anims, currentCharacter.Animations.run)
+		table.insert(anims, currentCharacter.Animate.run)
 	elseif assetTypeId == AvatarExperienceConstants.AssetTypes.WalkAnim then
-		table.insert(anims, currentCharacter.Animations.walk)
+		table.insert(anims, currentCharacter.Animate.walk)
 	elseif assetTypeId == AvatarExperienceConstants.AssetTypes.Emote then
-		table.insert(anims, currentCharacter.Animations.idle)
+		table.insert(anims, currentCharacter.Animate.idle)
 	elseif assetTypeId == AvatarExperienceConstants.AssetTypes.SwimAnim then
 		if avatarType == AvatarEditorConstants.AvatarType.R15 then
-			table.insert(anims, currentCharacter.Animations.swim)
-			table.insert(anims, currentCharacter.Animations.swimidle)
+			table.insert(anims, currentCharacter.Animate.swim)
+			table.insert(anims, currentCharacter.Animate.swimidle)
 		else
-			local swimAnim = currentCharacter.Animations.run:Clone()
+			local swimAnim = currentCharacter.Animate.run:Clone()
 			swimAnim.Name = 'swim'
 
 			table.insert(anims, swimAnim)

@@ -4,7 +4,7 @@ local ArgCheck = require(Modules.Common.ArgCheck)
 
 return Action(script.Name, function(assets, assetTypeId)
 	ArgCheck.isType(assets, "table", "SetAssetInfoFromInventoryFetch action expects assets to be a table")
-	ArgCheck.isType(assetTypeId, "string", "SetAssetInfoFromInventoryFetch action expects assetTypeId to be a string")
+	ArgCheck.isTypeOrNil(assetTypeId, "string", "SetAssetInfoFromInventoryFetch action expects assetTypeId to be a string")
 
 	return {
 		assets = assets,

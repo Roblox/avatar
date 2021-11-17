@@ -7,6 +7,8 @@ local EquipOutfit = require(Modules.AvatarExperience.AvatarEditor.Actions.EquipO
 local ReceivedAvatarData = require(Modules.AvatarExperience.AvatarEditor.Actions.ReceivedAvatarData)
 local Constants = require(Modules.AvatarExperience.Common.Constants)
 
+local RemoveLayeredClothing = require(Modules.AvatarExperience.AvatarEditor.Actions.RemoveLayeredClothing)
+
 local MAX_HATS = 3
 
 local function checkIfWearingAsset(assets, assetId)
@@ -94,5 +96,23 @@ return Rodux.createReducer(nil, {
 		else
 			return replaceOutfitParts(state, action.assets)
 		end
-	end
+	end,
+	[RemoveLayeredClothing.name] = function(state, _action)
+		state = state or {}
+		local modifiedState = false
+		local newState = {}
+
+		for assetType, assets in pairs(state) do
+			if Constants.LayeredClothingOrder[assetType] then
+				modifiedState = true
+			else
+				newState[assetType] = assets
+			end
+		end
+
+		if modifiedState then
+			return newState
+		end
+		return state
+	end,
 })

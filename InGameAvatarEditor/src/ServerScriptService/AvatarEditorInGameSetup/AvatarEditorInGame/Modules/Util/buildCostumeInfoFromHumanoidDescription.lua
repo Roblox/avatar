@@ -1,3 +1,7 @@
+local Modules = game:GetService("Players").LocalPlayer.PlayerGui.AvatarEditorInGame.Modules
+local LayeredClothingEnabled = require(Modules.Config.LayeredClothingEnabled)
+
+local AvatarExperienceConstants = require(Modules.AvatarExperience.Common.Constants)
 
 local HumanoidDescriptionIdToName = {
 	["2"]  = "GraphicTShirt",
@@ -27,10 +31,18 @@ local HumanoidDescriptionIdToName = {
 	["55"] = "WalkAnimation",
 }
 
+local function getAssetTypeId(accessoryType)
+	for k, v in pairs(AvatarExperienceConstants.AssetTypeIdToAccessoryTypeEnum) do
+		if v == accessoryType then
+			return k
+		end
+	end
+end
+
 local function buildCostumeInfoFromHumanoidDescription(description)
-	
+
 	local assetMap = {}
-	
+
 	for assetTypeId, prop in pairs(HumanoidDescriptionIdToName) do
 		local assets = string.split(description[prop], ",")
 		local filteredAssets = {}
@@ -43,7 +55,20 @@ local function buildCostumeInfoFromHumanoidDescription(description)
 			assetMap[assetTypeId] = filteredAssets
 		end
 	end
-	
+
+	if LayeredClothingEnabled then
+		local layeredAccessories = description:GetAccessories(--[[includeRidgitAccessories = ]] false)
+		for _, metaData in ipairs(layeredAccessories) do
+			local assetTypeId = getAssetTypeId(metaData.AccessoryType)
+			if assetTypeId then
+				if assetMap[assetTypeId] == nil then
+					assetMap[assetTypeId] = {}
+				end
+				table.insert(assetMap[assetTypeId], tostring(metaData.AssetId))
+			end
+		end
+	end
+
 	local info = {
 		assets = assetMap,
 		bodyColors = {
@@ -60,11 +85,11 @@ local function buildCostumeInfoFromHumanoidDescription(description)
 			head = description.HeadScale,
 			depth = description.DepthScale,
 			proportion = description.ProportionScale,
-			bodyType = description.BodyTypeScale,	
+			bodyType = description.BodyTypeScale,
 		},
 		avatarType = "R15",
 	}
-	
+
 	return info
 end
 
