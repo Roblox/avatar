@@ -141,7 +141,7 @@ function AvatarEditorInterface:hideAvatarEditor(saveOnClose)
 		local descriptionDifferent = self:areDescriptionsDifferent(currentDescription, editedDescription)
 
 		if rigTypeDifferent or descriptionDifferent then
-			self:promptSaveAvatar(currentDescription, currentRigType)
+			self:promptSaveAvatar(editedDescription, editedRigType)
 		end
 	end
 
