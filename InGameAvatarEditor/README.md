@@ -1,3 +1,5 @@
+This content may be out-of-date. For up-to-date resources on the Avatar Editor Service, see [Avatar Editor Service](https://create.roblox.com/docs/avatar/characters/avatar-editor-service).
+
 # AvatarEditorInGame
 
 A port of an older version of the App Avatar Editor made to work in game using the developer avatar editor APIs.
