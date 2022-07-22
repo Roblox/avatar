@@ -21,6 +21,10 @@ Take a look at how InGameStarterScript works. You can called PromptAllowInventor
 Then to show the avatar editor call AvatarEditorManager:showAvatarEditor()
 Hiding the avatar editor is more complicated since you need to worry about calling PromptSaveAvatar. You should be able to modify the hideAvatarEditor function for your purposes though.
 
+## Known Issues
+- There is no gamepad support.
+- Miscellaneous small bugs from the version of the editor being out of date.
+
 ## Changing the theme
 If you plan on using this in your game you may be interested in changing the theming of the avatar editor. Simple color modifcations can be made by editing the DarkTheme module in Modules/Common/. You may also wish to change the background used by the editor. To do this you can change the AvatarSceneNew in Assets.
 
