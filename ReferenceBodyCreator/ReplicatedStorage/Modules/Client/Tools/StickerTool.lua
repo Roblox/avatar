@@ -68,8 +68,6 @@ function StickerTool.new(modelInfo: ModelInfo.ModelInfoClass, inputManager)
 	self.modelInfo = modelInfo
 	self.inputManager = inputManager
 
-	self.stickerCounter = 1
-
 	self.currentlySelectedSticker = 0
 
 	self.isDraggingSticker = false
@@ -83,7 +81,8 @@ function StickerTool.new(modelInfo: ModelInfo.ModelInfoClass, inputManager)
 
 	-- AppliedStickers contains info about all the stickers that are currently applied to the body.
 	-- Position, rotation, scale, tile padding, etc.
-	self.appliedStickers = {} :: { StickerData }
+	self.appliedStickers = modelInfo:GetAppliedStickers() :: { StickerData }
+	self.stickerCounter = 1 + #self.appliedStickers
 
 	self.connections = {}
 
@@ -590,7 +589,7 @@ function StickerTool:RedrawSticker(stickerData: StickerData, shouldFireServer: b
 		local tiledStickerAction = Actions.CreateNewAction(Actions.ActionTypes.TiledSticker, tiledStickerActionMetadata)
 
 		Actions.ExecuteAction(self.modelInfo, tiledStickerAction)
-		
+
 		if shouldFireServer then
 			SendActionToServerEvent:FireServer(tiledStickerAction)
 		else
@@ -636,7 +635,7 @@ function StickerTool:RedrawSticker(stickerData: StickerData, shouldFireServer: b
 					Actions.CreateNewAction(Actions.ActionTypes.ProjectedSticker, projectedStickerActionMetadata)
 
 				Actions.ExecuteAction(self.modelInfo, projectedStickerAction)
-				
+
 				if shouldFireServer then
 					SendActionToServerEvent:FireServer(projectedStickerAction)
 				else
@@ -664,7 +663,7 @@ function StickerTool:RedrawSticker(stickerData: StickerData, shouldFireServer: b
 		local stickerAction = Actions.CreateNewAction(Actions.ActionTypes.Sticker, stickerActionMetadata)
 
 		Actions.ExecuteAction(self.modelInfo, stickerAction)
-		
+
 		if shouldFireServer then
 			SendActionToServerEvent:FireServer(stickerAction)
 		else
@@ -767,6 +766,7 @@ function StickerTool:Disable()
 end
 
 function StickerTool:Destroy()
+	self.modelInfo:SaveAppliedStickers(self.appliedStickers)
 	self.inputGui:Destroy()
 	self.currentlySelectedSticker = 0
 

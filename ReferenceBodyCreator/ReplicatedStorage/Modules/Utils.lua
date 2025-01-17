@@ -1,4 +1,5 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local GamepadService = game:GetService("GamepadService")
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")
 
@@ -14,7 +15,7 @@ local MAX_STICK_ANGULAR_SPEED = math.rad(140) -- Radians per second
 local utils = {}
 
 utils.GetIsProjectionActivated = function()
-	return false
+	return true
 end
 
 utils.GetVisualizeServerEdits = function()
@@ -476,6 +477,25 @@ utils.rotateAndZoom = function(
 	if zoomStraight and math.abs(stickInput.Y) > MIN_AXIS_THRESHOLD then
 		zoomStraight(deltaTime * -stickInput.Y * MAX_ZOOM_SPEED)
 	end
+end
+
+local gamepadInputTypes = {
+	[Enum.UserInputType.Gamepad1] = true,
+	[Enum.UserInputType.Gamepad2] = true,
+	[Enum.UserInputType.Gamepad3] = true,
+	[Enum.UserInputType.Gamepad4] = true,
+	[Enum.UserInputType.Gamepad5] = true,
+	[Enum.UserInputType.Gamepad6] = true,
+	[Enum.UserInputType.Gamepad7] = true,
+	[Enum.UserInputType.Gamepad8] = true,
+}
+
+function utils.isGamepadInputType(userInputType: Enum.UserInputType): boolean
+	return userInputType and gamepadInputTypes[userInputType] == true
+end
+
+function utils.isVirtualCursor(userInputType: Enum.UserInputType): boolean
+	return utils.isGamepadInputType(userInputType) and GamepadService.GamepadCursorEnabled
 end
 
 return utils

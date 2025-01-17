@@ -194,10 +194,11 @@ end
 
 function BezierBrush:DoDraw(drawInfo: BrushInfo.DrawInfo, time: number)
 	local position = drawInfo.textureDrawPosition
+	local alwaysConnect = drawInfo.isVirtualCursorMovement
 	if self.lastPenPosition then
 		if (self.lastPenPosition - position).magnitude < 3 then
 			return
-		elseif (self.lastPenPosition - position).magnitude > 50 then
+		elseif not alwaysConnect and (self.lastPenPosition - position).magnitude > 50 then
 			-- Instead of connecting the two positions (which would draw a long line
 			-- across the texture), we want to finish the old stroke and start a new one.
 			self:PenUp()

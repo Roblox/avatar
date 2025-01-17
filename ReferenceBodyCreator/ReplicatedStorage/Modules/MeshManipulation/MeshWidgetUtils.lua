@@ -139,16 +139,20 @@ local function GetDeformedSimMeshInfo(meshInfoClass: MeshInfo.MeshInfoClass, wid
 	local deformedMeshInfo = {} :: BoundsConstants.SimMeshInfos
 	for _, deformedPartName in widget.deformsPartNames do
 		local meshInfo: MeshInfo.MeshInfo = meshInfoClass:GetMeshInfoByName(deformedPartName)
-		local deformedPositions = MeshWidgetUtils.GetDeformedMeshData(meshInfoClass, { widget }, deformedPartName)
+
+		local widgets = {widget}
+		if widget.mirroredWidget then
+			table.insert(widgets, widget.mirroredWidget)
+		end
+
+		local deformedPositions = MeshWidgetUtils.GetDeformedMeshData(meshInfoClass, widgets, deformedPartName)
 		local min, max = MeshUtils.GetVertexBounds(deformedPositions)
+	
 		local center = (min + max) / 2
-		local newCFrame = meshInfo.meshPart.CFrame
-		if center.Magnitude > 0.0001 then
-			local scaleFactor = GetMeshPartScaleFactor(meshInfo)
-			newCFrame = GetOffsetMeshPartCFrame(meshInfo, scaleFactor, -center)
-			for vertexId, vertexPos in deformedPositions do
-				deformedPositions[vertexId] = (vertexPos - center) / scaleFactor
-			end
+		local scaleFactor = GetMeshPartScaleFactor(meshInfo)
+		local newCFrame = GetOffsetMeshPartCFrame(meshInfo, scaleFactor, -center)
+		for vertexId, vertexPos in deformedPositions do
+			deformedPositions[vertexId] = (vertexPos - center) / scaleFactor
 		end
 
 		if not next(deformedPositions) then
@@ -179,26 +183,30 @@ local function CombineSimMeshInfo(
 	end
 end
 
-local function SimulateWidgetMoved(
-	meshInfoClass: MeshInfo.MeshInfoClass,
-	widgetData: MeshInfo.WidgetData,
-	widgetControl: MeshInfo.WidgetControl,
-	newPosition: Vector3
-)
-	-- Copy Widget Data
-	local widgetDataCopy = {}
-	for key, value in widgetData do
-		widgetDataCopy[key] = value
-	end
+local function CopyWidgetData(widgetData: MeshInfo.WidgetData, newPosition: Vector3) : MeshInfo.WidgetData
+	local oldMirroredWidget = widgetData.mirroredWidget
+	widgetData.mirroredWidget = nil
+	local widgetDataCopy = Utils.DeepCopy(widgetData)
 	widgetDataCopy.position = newPosition
 
-	-- Copy Widget Control Data
+	if oldMirroredWidget then
+		widgetDataCopy.mirroredWidget = Utils.DeepCopy(oldMirroredWidget)
+		widgetDataCopy.mirroredWidget.position = widgetDataCopy.position * Vector3.new(-1, 1, 1)
+	end 
+
+	-- Restore mirrored widget
+	widgetData.mirroredWidget = oldMirroredWidget
+
+	return widgetDataCopy
+end
+
+local function CopyWidgetControl(widgetDataCopy: MeshInfo.WidgetData, widgetControl: MeshInfo.WidgetControl)
 	local widgetControlCopy = {}
 	for key, value in widgetControl :: { [any]: any } do
 		widgetControlCopy[key] = value
 	end
 
-	if widgetControlCopy ~= nil and widgetControlCopy.controlType == "Line" then
+	if widgetControlCopy.controlType == "Line" then
 		-- Calculate how far the widget has moved along the line
 		local lineDirection = (widgetControlCopy.controlP2 - widgetControlCopy.controlP1)
 		local closestLinePoint = Utils.GetClosestPointOn3dLineSegment(
@@ -211,6 +219,20 @@ local function SimulateWidgetMoved(
 
 		widgetControlCopy.linearProgress = controlLinearProgress
 		widgetDataCopy.activeControl = widgetControlCopy
+	end
+end
+
+local function SimulateWidgetMoved(
+	meshInfoClass: MeshInfo.MeshInfoClass,
+	widgetData: MeshInfo.WidgetData,
+	widgetControl: MeshInfo.WidgetControl,
+	newPosition: Vector3
+)
+	local widgetDataCopy = CopyWidgetData(widgetData, newPosition)
+
+	CopyWidgetControl(widgetDataCopy, widgetControl)
+	if widgetDataCopy.mirroredWidget then
+		CopyWidgetControl(widgetDataCopy.mirroredWidget, widgetControl)
 	end
 
 	local initialMeshInfo = GetInitialSimMeshInfo(meshInfoClass)
@@ -233,6 +255,7 @@ local function GetFixedControlPositions(
 				SimulateWidgetMoved(meshInfoClass, widgetData, widgetControl, controlPosition)
 			local outOfBoundsDatas =
 				UGCBoundsUtil.ValidateBounds(initialMeshInfo, deformedMeshInfo, widgetData.deformsPartNames)
+		
 			if outOfBoundsDatas and #outOfBoundsDatas > 0 then
 				local scaleFactor = GetWidgetScaleFactor(controlPosition, widgetData.startPosition, outOfBoundsDatas)
 				fixedControlPositions[key] =

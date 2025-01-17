@@ -43,13 +43,43 @@ function MeshEditingWidgetManager.new(modelInfo: ModelInfo.ModelInfoClass, model
 	self.inputManager = inputManager
 	self.cameraManager = cameraManager
 
-	self.screenGui = Instance.new("ScreenGui")
-	self.screenGui.Name = "MeshEditingControls"
-	self.screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-	self.screenGui.DisplayOrder = 5
-	self.screenGui.ResetOnSpawn = false
-	self.screenGui.IgnoreGuiInset = true
-	self.screenGui.Parent = PlayerGui
+	self.surfaceGuiPart = Instance.new("Part")
+	self.surfaceGuiPart.Parent = workspace
+	self.surfaceGuiPart.Transparency = 1
+	self.surfaceGuiPart.Anchored = true
+
+	local camera = workspace.CurrentCamera
+
+	self.surfaceGui = Instance.new("SurfaceGui")
+	self.surfaceGui.Name = "MeshEditingControls"
+	self.surfaceGui.ResetOnSpawn = false
+	self.surfaceGui.Adornee = self.surfaceGuiPart
+	self.surfaceGui.CanvasSize = camera.ViewportSize
+	self.surfaceGui.AlwaysOnTop = true
+	self.surfaceGui.Parent = PlayerGui
+	-- Ensure part is anchored and the SurfaceGui is on the desired face
+	local surfaceGuiConnection = RunService.RenderStepped:Connect(function()
+		local model = self.modelDisplay:GetModel()
+		local cameraCFrame = camera:GetRenderCFrame()
+		local distance = (cameraCFrame.Position - model.PrimaryPart.Position).Magnitude
+			- math.max(model:GetExtentsSize().X, model:GetExtentsSize().Z) / 2
+		local viewportSize = camera.ViewportSize
+		local fov = math.rad(camera.FieldOfView)
+		local aspect = viewportSize.X / viewportSize.Y
+		camera.HeadLocked = true
+
+		-- Calculate the size needed to fill the screen at 'distance'
+		local height = 2 * distance * math.tan(fov / 2)
+		local width = height * aspect
+
+		self.surfaceGuiPart.Size = Vector3.new(width, height, 0.1)
+		self.surfaceGui.CanvasSize = camera.ViewportSize
+
+		-- Position the part
+		local newCFrame = cameraCFrame * CFrame.new(0, 0, -distance)
+		-- Make the part face the camera
+		self.surfaceGuiPart.CFrame = CFrame.lookAt(newCFrame.Position, cameraCFrame.Position + cameraCFrame.LookVector)
+	end)
 
 	-- Add widgets to the player's UI so they can drag UI elements around to modify meshes
 	self.widgets = {} :: { [string]: WidgetController }
@@ -59,12 +89,15 @@ function MeshEditingWidgetManager.new(modelInfo: ModelInfo.ModelInfoClass, model
 
 	self.connections = {}
 
+	table.insert(self.connections, surfaceGuiConnection)
+
 	self.connections["inputChanged"] = UserInputService.InputChanged:Connect(function(input)
 		if
 			self.draggingWidget ~= nil
 			and (
 				input.UserInputType == Enum.UserInputType.MouseMovement
 				or input.UserInputType == Enum.UserInputType.Touch
+				or (Utils.isVirtualCursor(input.UserInputType) and input.KeyCode == Enum.KeyCode.Thumbstick1)
 			)
 		then
 			self:DragWidget(self.draggingWidget, input)
@@ -97,8 +130,8 @@ function MeshEditingWidgetManager.new(modelInfo: ModelInfo.ModelInfoClass, model
 	return self
 end
 
-local function CreateWidgetUI(widgetData: MeshInfo.WidgetData, screenGui: ScreenGui)
-	local widget = Instance.new("ImageButton", screenGui)
+local function CreateWidgetUI(widgetData: MeshInfo.WidgetData, surfaceGui: SurfaceGui)
+	local widget = Instance.new("ImageButton")
 	widget.Size = UDim2.fromOffset(30, 30)
 	widget.AnchorPoint = Vector2.new(0.5, 0.5)
 	widget.Transparency = 0.5
@@ -107,8 +140,9 @@ local function CreateWidgetUI(widgetData: MeshInfo.WidgetData, screenGui: Screen
 	widget.ImageColor3 = Color3.fromHex("262626")
 	widget.ImageTransparency = 0.5
 	widget.Name = widgetData.name
+	widget.Parent = surfaceGui
 
-	local circle = Instance.new("ImageLabel", widget)
+	local circle = Instance.new("ImageLabel")
 	circle.Size = UDim2.fromOffset(20, 20)
 	circle.AnchorPoint = Vector2.new(0.5, 0.5)
 	circle.Transparency = 0.2
@@ -117,6 +151,7 @@ local function CreateWidgetUI(widgetData: MeshInfo.WidgetData, screenGui: Screen
 	circle.ImageTransparency = 0.1
 	circle.Name = "Circle"
 	circle.Position = UDim2.fromScale(0.5, 0.5)
+	circle.Parent = widget
 
 	local controlUIMap = {}
 
@@ -299,7 +334,7 @@ function MeshEditingWidgetManager:SetupWidgets(controlGroupName)
 			continue
 		end
 
-		local widget, controlUIMap = CreateWidgetUI(widgetData, self.screenGui)
+		local widget, controlUIMap = CreateWidgetUI(widgetData, self.surfaceGui)
 
 		widgetController = {
 			widgetData = widgetData,
@@ -469,12 +504,14 @@ local function SnapWorldPointToControl(point: Vector3, control: MeshInfo.WidgetC
 end
 
 function MeshEditingWidgetManager:DragWidget(widgetController: WidgetController, input)
+	local position = input.Position
 	if self.prevMousePos ~= Vector2.zero then
-		local ray = workspace.CurrentCamera:ScreenPointToRay(input.Position.X, input.Position.Y)
+		local mouseHitPoint = LocalPlayer:GetMouse().Hit.Position
+		local direction = (mouseHitPoint - workspace.CurrentCamera.CFrame.Position).Unit
 		local widgetWorldPos =
 			widgetController.widgetData.meshPart.CFrame:PointToWorldSpace(widgetController.widgetData.position)
 		local depth = (workspace.CurrentCamera.CFrame.Position - widgetWorldPos).Magnitude
-		local worldPoint = workspace.CurrentCamera.CFrame.Position + ray.Unit.Direction * depth
+		local worldPoint = workspace.CurrentCamera.CFrame.Position + direction * depth
 
 		-- If this widget has control constraints (eg: it must adhere to a line), then apply those constraints now
 		local activeControl = self:GetActiveControlForWidget(widgetController.widgetData)
@@ -488,7 +525,7 @@ function MeshEditingWidgetManager:DragWidget(widgetController: WidgetController,
 		self:OnWidgetMoved(widgetController.widgetData, newPosition)
 	end
 
-	self.prevMousePos = input.Position
+	self.prevMousePos = position
 end
 
 function MeshEditingWidgetManager:IsShowingWidgets()
@@ -508,7 +545,7 @@ function MeshEditingWidgetManager:HideWidgets()
 end
 
 function MeshEditingWidgetManager:Destroy()
-	self.screenGui:Destroy()
+	self.surfaceGuiPart:Destroy()
 
 	for _, connection in self.connections do
 		connection:Disconnect()
