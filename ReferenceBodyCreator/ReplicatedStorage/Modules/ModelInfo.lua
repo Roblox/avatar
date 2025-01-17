@@ -163,6 +163,14 @@ function ModelInfo:GetMeshParts(): { MeshPart }
 	return self.meshParts
 end
 
+function ModelInfo:SaveAppliedStickers(stickers: {any})
+	self.stickers = stickers
+end
+
+function ModelInfo:GetAppliedStickers(): {any}
+	return self.stickers or {}
+end
+
 export type ModelInfoClass = typeof(ModelInfo)
 
 return ModelInfo

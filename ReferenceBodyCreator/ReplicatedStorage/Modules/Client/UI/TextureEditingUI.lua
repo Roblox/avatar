@@ -33,13 +33,13 @@ local TOOLTIP_INTERNAL_PADDING = 2
 local TOOLTIP_CLOSE_BUTTON_HEIGHT = 20
 local TOOLTIP_FONT_SIZE = 18
 
-local BUTTON_HEIGHT = 40
 local FRAME_MARGIN = 4
 local RIGHT_BAR_WIDTH = 140
 local TOP_PADDING = 20
 local STICKER_BUTTON_STROKE_SIZE = 1.5
 local STICKER_ICON_SIZE = 120
 local STICKER_PANEL_HEADER_HEIGHT = 10 -- 110
+local BUTTON_PADDING = 5
 
 local BRUSH_TOOLTIP_SIZE = 50
 local ACTION_BUTTON_SIZE = 32 -- Buttons like preview
@@ -357,20 +357,36 @@ function TextureEditingUI:CreateBrushToolBar()
 	if self.brushTool.UseProjectionBrush == true then
 		local BrushToggleButton = Instance.new("ImageButton")
 		self.BrushToggleButton = BrushToggleButton
-		BrushToggleButton.Size =
-			UDim2.new(0, UIConstants.LeftBarButtonSize - UIConstants.LeftBarButtonPadding * 2, 0, BUTTON_HEIGHT)
-		BrushToggleButton.Image = "rbxassetid://15610976092" -- Disabled by default
-		BrushToggleButton.Parent = BrushToolBar
+		BrushToggleButton.Size = UDim2.new(0, UIConstants.LeftBarButtonSize, 0, UIConstants.LeftBarButtonSize)
+		local buttonImage = Instance.new("ImageLabel")
+		buttonImage.AnchorPoint = Vector2.new(0.5, 0.5)
+		buttonImage.Image = "rbxassetid://109637331807480" -- Disabled by default
+		buttonImage.BackgroundTransparency = 1
+		buttonImage.Size = UDim2.new(
+			0,
+			UIConstants.LeftBarButtonSize - UIConstants.LeftBarButtonPadding * 2 - BUTTON_PADDING * 2,
+			0,
+			UIConstants.ImageButtonSize
+		)
+		buttonImage.Position = UDim2.new(0.5, 0, 0.5, 0)
 		BrushToggleButton.BackgroundTransparency = 1
 		BrushToggleButton.LayoutOrder = 5
 		BrushToggleButton.Activated:Connect(function()
 			self.brushTool.UseProjectionBrush = not self.brushTool.UseProjectionBrush
 			if self.brushTool.UseProjectionBrush then
-				BrushToggleButton.Image = "rbxassetid://15610976092"
+				buttonImage.Image = "rbxassetid://109637331807480"
 			else
-				BrushToggleButton.Image = "rbxassetid://15610974290"
+				buttonImage.Image = "rbxassetid://111003482690827"
 			end
 		end)
+		buttonImage.Parent = BrushToggleButton
+		BrushToggleButton.Parent = BrushToolBar
+		local uiPadding = Instance.new("UIPadding")
+		uiPadding.PaddingTop = UDim.new(0, 0)
+		uiPadding.PaddingRight = UDim.new(0, 0)
+		uiPadding.PaddingLeft = UDim.new(0, 0)
+		uiPadding.PaddingBottom = UDim.new(0, BUTTON_PADDING * 2)
+		uiPadding.Parent = BrushToggleButton
 	end
 
 	return BrushToolBar

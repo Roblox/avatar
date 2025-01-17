@@ -2,6 +2,7 @@ local Players = game:GetService("Players")
 local GuiService = game:GetService("GuiService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StarterGui = game:GetService("StarterGui")
+local StarterPlayer = game:GetService("StarterPlayer")
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")
 
@@ -42,9 +43,8 @@ function BaseUI.new(manager, fabricTool, stickerTool, brushTool)
 
 	-- Hide the player list and jump button
 	StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, false)
-	if PlayerGui:FindFirstChild("TouchGui") then
-		PlayerGui.TouchGui.TouchControlFrame.JumpButton:Destroy()
-	end
+	self.prevCharacterJumpPower = StarterPlayer.CharacterJumpPower
+	StarterPlayer.CharacterJumpPower = 0
 
 	-- Get height of the core UI top bar
 	local guiInset: Vector2 = GuiService:GetGuiInset()
@@ -162,6 +162,7 @@ function BaseUI:Destroy()
 	self.MeshEditingUI:Destroy()
 
 	PlayerGui.ScreenOrientation = self.prevScreenOrientation
+	StarterPlayer.CharacterJumpPower = self.prevCharacterJumpPower
 end
 
 return BaseUI

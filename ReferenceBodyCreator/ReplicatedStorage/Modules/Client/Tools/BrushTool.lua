@@ -25,7 +25,6 @@ local MeshUtils = require(MeshManipulation:WaitForChild("MeshUtils"))
 
 local Brushes = Modules:WaitForChild("Brushes")
 local BrushInfo = require(Brushes:WaitForChild("BrushInfo"))
-local BezierBrush = require(Brushes:WaitForChild("BezierBrush"))
 local ProjectionBrush = require(Brushes:WaitForChild("ProjectionBrush"))
 local LinearBrush = require(Brushes:WaitForChild("LinearBrush"))
 
@@ -40,6 +39,8 @@ BrushTool.__index = BrushTool
 
 local STATE_PAINTING = 1
 local STATE_ERASING = 2
+
+local VIRTUAL_CURSOR_UPDATES_PER_SECOND = 10
 
 function BrushTool.new(modelInfo: ModelInfo.ModelInfoClass, inputManager)
 	local self = {}
@@ -60,6 +61,7 @@ function BrushTool.new(modelInfo: ModelInfo.ModelInfoClass, inputManager)
 	self.UseProjectionBrush = Utils.GetIsProjectionActivated()
 
 	self.connections = {}
+	self.lastVirtualCursorUpdate = 0
 
 	self:SetupMeshDraw()
 
@@ -193,6 +195,26 @@ function BrushTool:CreateNewBrush(meshPart)
 	self.currentBrush:SetAllMeshPart(self.modelInfo:GetMeshInfo():GetEditableMeshMap())
 end
 
+-- Returns: A) Did we hit the larger bounding box? B) The closest hit point along the raycast.
+function BrushTool:CastRayFromCamera(inputPosition): (boolean, MeshUtils.EditableMeshRaycastResult?)
+	local camera = game.Workspace.CurrentCamera
+	if not camera then
+		return false, nil
+	end
+
+	local ray = camera:ScreenPointToRay(inputPosition.X, inputPosition.Y)
+
+	-- Now, raycast against the meshparts to determine the closest hit point.
+	local meshInfo = self.modelInfo:GetMeshInfo()
+	local closestRaycastResult: MeshUtils.EditableMeshRaycastResult? =
+		MeshUtils.RaycastAll(ray, meshInfo:GetEditableMeshMap(), meshInfo:GetScaleFactorMap())
+
+	if closestRaycastResult ~= nil and closestRaycastResult.triangleId then
+		return true, closestRaycastResult
+	end
+	return false, nil
+end
+
 -- Handle user input. There is a bounding box input capture element that sits over the screen
 -- Note that input is only captured by BrushTool when we are in the brush tool mode.
 function BrushTool:SetupMeshDraw()
@@ -205,26 +227,7 @@ function BrushTool:SetupMeshDraw()
 	InputCapture.BackgroundTransparency = 1
 	InputCapture.Size = UDim2.fromScale(1, 1)
 	InputCapture.Parent = brushInputGui
-
-	-- Returns: A) Did we hit the larger bounding box? B) The closest hit point along the raycast.
-	local function castRayFromCamera(inputPosition): (boolean, MeshUtils.EditableMeshRaycastResult?)
-		local camera = game.Workspace.CurrentCamera
-		if not camera then
-			return false, nil
-		end
-
-		local ray = camera:ScreenPointToRay(inputPosition.X, inputPosition.Y)
-
-		-- Now, raycast against the meshparts to determine the closest hit point.
-		local meshInfo = self.modelInfo:GetMeshInfo()
-		local closestRaycastResult: MeshUtils.EditableMeshRaycastResult? =
-			MeshUtils.RaycastAll(ray, meshInfo:GetEditableMeshMap(), meshInfo:GetScaleFactorMap())
-
-		if closestRaycastResult ~= nil and closestRaycastResult.triangleId then
-			return true, closestRaycastResult
-		end
-		return false, nil
-	end
+	self.InputCapture = InputCapture
 
 	local penDown = false
 
@@ -240,7 +243,7 @@ function BrushTool:SetupMeshDraw()
 			return
 		end
 
-		local didHitModel, raycastResult: MeshUtils.EditableMeshRaycastResult? = castRayFromCamera(input.Position)
+		local didHitModel, raycastResult: MeshUtils.EditableMeshRaycastResult? = self:CastRayFromCamera(input.Position)
 		if didHitModel == false or not raycastResult then
 			return
 		end
@@ -293,6 +296,7 @@ function BrushTool:SetupMeshDraw()
 			textureDrawPosition = drawPosition,
 			cameraCFrame = game.Workspace.CurrentCamera.CFrame,
 			castedPoint = raycastResult.meshPart.CFrame:PointToWorldSpace(raycastResult.point),
+			isVirtualCursorMovement = false,
 		}
 		self.currentBrush:PenDown(drawInfo)
 
@@ -300,19 +304,23 @@ function BrushTool:SetupMeshDraw()
 	end)
 
 	self.connections["inputChanged"] = UserInputService.InputChanged:Connect(function(input, gameProcessedEvent)
-		if gameProcessedEvent then
-			return
-		end
-
 		if not penDown then
 			return
 		end
 
-		if
-			input.UserInputType ~= Enum.UserInputType.MouseMovement
-			and input.UserInputType ~= Enum.UserInputType.Touch
-		then
-			return
+		local isVirtualCursorMovement = Utils.isVirtualCursor(input.UserInputType) and input.KeyCode == Enum.KeyCode.Thumbstick1
+
+		if not isVirtualCursorMovement then
+			if gameProcessedEvent then
+				return
+			end
+
+			if
+				input.UserInputType ~= Enum.UserInputType.MouseMovement
+				and input.UserInputType ~= Enum.UserInputType.Touch
+			then
+				return
+			end
 		end
 
 		if input.UserInputState == Enum.UserInputType.Touch then
@@ -331,59 +339,39 @@ function BrushTool:SetupMeshDraw()
 			end
 		end
 
-		local didHitModel, raycastResult: MeshUtils.EditableMeshRaycastResult? = castRayFromCamera(input.Position)
-		if not didHitModel or not raycastResult then
-			self.currentBrush:PenUp()
-			return
+		local inputPosition = input.Position
+		if isVirtualCursorMovement then
+			local ticks = tick()
+			-- Throttle virtual cursor movement events to improve performance
+			if ticks - self.lastVirtualCursorUpdate < (1 / VIRTUAL_CURSOR_UPDATES_PER_SECOND) then
+				return
+			end
+			self.lastVirtualCursorUpdate = ticks
+			inputPosition = UserInputService:GetMouseLocation()
 		end
-
-		local textureCoord = MeshUtils.GetTextureCoordinate(
-			raycastResult.editableMesh,
-			raycastResult.triangleId,
-			raycastResult.barycentricCoordinate
-		)
-
-		local textureInfo: TextureInfo.TextureInfoClass = self.modelInfo:GetTextureInfo()
-		local textureSize = textureInfo:GetTextureSize(raycastResult.meshPart)
-		local drawPosition = textureCoord * textureSize
-
-		local drawInfo: BrushInfo.DrawInfo = {
-			textureDrawPosition = drawPosition,
-			cameraCFrame = game.Workspace.CurrentCamera.CFrame,
-			castedPoint = raycastResult.meshPart.CFrame:PointToWorldSpace(raycastResult.point),
-		}
-
-		if
-			self.lastDrawnMeshPart ~= raycastResult.meshPart
-			and textureInfo:MeshPartsShareLayer(self.lastDrawnMeshPart, raycastResult.meshPart)
-		then
-			self.currentBrush:PenUp()
-			self:CreateNewBrush(raycastResult.meshPart)
-
-			self.currentBrush:PenDown(drawInfo)
-		else
-			self.currentBrush:MovePen(drawInfo)
-		end
-
-		self.lastDrawnMeshPart = raycastResult.meshPart
-
-		textureInfo:UpdateOutputColorMap(raycastResult.meshPart)
+		self:HandleInputChanged(inputPosition, isVirtualCursorMovement)
 	end)
 
 	self.connections["inputEnded"] = UserInputService.InputEnded:Connect(function(input, _gameProcessedEvent)
+		local usingVirtualCursor = Utils.isVirtualCursor(input.UserInputType)
 		if
 			input.UserInputType ~= Enum.UserInputType.MouseButton1
 			and input.UserInputType ~= Enum.UserInputType.Touch
+			and (not usingVirtualCursor or input.KeyCode ~= Enum.KeyCode.ButtonA)
 		then
 			return
 		end
 
 		penDown = false
 
-		for i, touchInput in pairs(self.touchPoints) do
-			if touchInput == input then
-				table.remove(self.touchPoints, i)
-				break
+		if usingVirtualCursor then
+			self.touchPoints = {}
+		else
+			for i, touchInput in pairs(self.touchPoints) do
+				if touchInput == input then
+					table.remove(self.touchPoints, i)
+					break
+				end
 			end
 		end
 
@@ -393,6 +381,47 @@ function BrushTool:SetupMeshDraw()
 			self.currentBrush = nil
 		end
 	end)
+end
+
+function BrushTool:HandleInputChanged(inputPosition: Vector2, isVirtualCursorMovement: boolean)
+	local didHitModel, raycastResult: MeshUtils.EditableMeshRaycastResult? = self:CastRayFromCamera(inputPosition)
+	if not didHitModel or not raycastResult then
+		self.currentBrush:PenUp()
+		return
+	end
+
+	local textureCoord = MeshUtils.GetTextureCoordinate(
+		raycastResult.editableMesh,
+		raycastResult.triangleId,
+		raycastResult.barycentricCoordinate
+	)
+
+	local textureInfo: TextureInfo.TextureInfoClass = self.modelInfo:GetTextureInfo()
+	local textureSize = textureInfo:GetTextureSize(raycastResult.meshPart)
+	local drawPosition = textureCoord * textureSize
+
+	local drawInfo: BrushInfo.DrawInfo = {
+		textureDrawPosition = drawPosition,
+		cameraCFrame = game.Workspace.CurrentCamera.CFrame,
+		castedPoint = raycastResult.meshPart.CFrame:PointToWorldSpace(raycastResult.point),
+		isVirtualCursorMovement = isVirtualCursorMovement,
+	}
+
+	if
+		self.lastDrawnMeshPart ~= raycastResult.meshPart
+		and textureInfo:MeshPartsShareLayer(self.lastDrawnMeshPart, raycastResult.meshPart)
+	then
+		self.currentBrush:PenUp()
+		self:CreateNewBrush(raycastResult.meshPart)
+
+		self.currentBrush:PenDown(drawInfo)
+	else
+		self.currentBrush:MovePen(drawInfo)
+	end
+
+	self.lastDrawnMeshPart = raycastResult.meshPart
+
+	textureInfo:UpdateOutputColorMap(raycastResult.meshPart)
 end
 
 function BrushTool:Destroy()

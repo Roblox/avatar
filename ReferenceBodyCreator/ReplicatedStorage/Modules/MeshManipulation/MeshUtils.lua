@@ -98,12 +98,11 @@ function MeshUtils.CastRayFromCamera(
 ): (boolean, EditableMeshRaycastResult?)
 	-- Convert to object-space coords that will be used by dynamic mesh raycast
 	local objectSpaceRayOrigin = meshPart.CFrame:PointToObjectSpace(ray.Origin)
-	local objectSpaceRayDirection = meshPart.CFrame:VectorToObjectSpace(ray.Direction)
+	local objectSpaceRayDirection = meshPart.CFrame:VectorToObjectSpace(ray.Direction).Unit
 
 	-- Scale the coords to match the scale of the dynamic mesh
 	local meshScaleFactor = scaleFactor
 	objectSpaceRayOrigin = objectSpaceRayOrigin * meshScaleFactor
-	objectSpaceRayDirection = objectSpaceRayDirection * meshScaleFactor
 
 	local triangleId, hitPoint, barycentricCoordinate =
 		editableMesh:RaycastLocal(objectSpaceRayOrigin, objectSpaceRayDirection * 100)

@@ -109,12 +109,17 @@ local function PublishModel(player)
 
 	playerEditModel:UpdateOutputColorMap()
 
-	local humanoidDescription = playerEditModel:GetHumanoidDescription()
+	local modelToPublish = playerEditModel:GetModel():Clone()
+	local humanoidDescription = modelToPublish:FindFirstChildWhichIsA("HumanoidDescription")
 
-	AccessoryUtils.RevertToOriginalSizes(playerEditModel:GetModel())
-	AttachmentUtils.RevertToOriginalPositions(playerEditModel:GetModel())
+	AccessoryUtils.RevertToOriginalSizes(modelToPublish)
+	AttachmentUtils.RevertToOriginalPositions(modelToPublish)
 
-	for _, meshPart in playerEditModel:GetMeshParts() do
+	for _, meshPart in modelToPublish:GetDescendants() do
+		if not meshPart:IsA("MeshPart") then
+			continue
+		end
+
 		meshPart.Anchored = false
 
 		if meshPart.Parent:IsA("Accessory") then
@@ -136,10 +141,19 @@ local function PublishModel(player)
 				player,
 				"Failed to upload avatar. Result: " .. tostring(result) .. " | Error: " .. resultMessage
 			)
+
+			if result ~= Enum.PromptCreateAvatarResult.PermissionDenied and result ~= Enum.PromptCreateAvatarResult.Timeout then
+				task.spawn(function()
+					-- We throw an error here so that we can see this reported in the error dashboard for the place
+					-- Since the error is in a task.spawn, it won't stop this function from completing
+					error("Failed to upload avatar. Result Code: " .. tostring(result) .. " | Error: " .. resultMessage)
+				end)
+			end
 		end
 	else
 		print("error")
 		print(result)
+
 		ShowMessageEvent:FireClient(player, "Failed to upload avatar. Reason: " .. tostring(result))
 	end
 end

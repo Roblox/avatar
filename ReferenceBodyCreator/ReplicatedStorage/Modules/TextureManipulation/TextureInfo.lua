@@ -5,7 +5,10 @@ local Modules = ReplicatedStorage:WaitForChild("Modules")
 
 local Config = Modules:WaitForChild("Config")
 local BlanksData = require(Config:WaitForChild("BlanksData"))
+local Constants = require(Config:WaitForChild("Constants"))
 local RegionMaps = require(Config:WaitForChild("RegionMaps"))
+
+local FAILED_TO_CREATE_EI_MSG = "Failed to create editable image."
 
 type SingleLayer = {
 	name: string,
@@ -15,8 +18,8 @@ type SingleLayer = {
 type LayerInfo = {
 	originalTextureId: string,
 	inputLayers: { SingleLayer },
-
 	outputEditableImage: EditableImage,
+	reservedBrushEditableImage : EditableImage
 }
 
 type ModelTextureInfo = {
@@ -73,6 +76,9 @@ local function SetupModelTextures(model: Model): ModelTextureInfo
 		end
 
 		local baseTexture = AssetService:CreateEditableImageAsync(Content.fromUri(descendant.TextureID))
+		if not baseTexture then
+			error(FAILED_TO_CREATE_EI_MSG)
+		end
 
 		local baseTextureLayer: SingleLayer = {
 			name = "BaseTexture",
@@ -82,11 +88,20 @@ local function SetupModelTextures(model: Model): ModelTextureInfo
 		local outputTexture = AssetService:CreateEditableImage({
 			Size = baseTexture.Size,
 		})
+		if not outputTexture then
+			error(FAILED_TO_CREATE_EI_MSG)
+		end
+
+		local brushLayerEI = AssetService:CreateEditableImage({ Size = baseTexture.Size })
+		if not brushLayerEI then
+			error(FAILED_TO_CREATE_EI_MSG)
+		end
 
 		local newLayerInfo: LayerInfo = {
 			inputLayers = { baseTextureLayer },
 			outputEditableImage = outputTexture,
 			originalTextureId = descendant.TextureID,
+			reservedBrushEditableImage = brushLayerEI
 		}
 
 		textureIdToLayerMap[descendant.TextureID] = newLayerInfo
@@ -125,8 +140,12 @@ local function GetAllRegionBuffers(sourceRegionMap: RegionMaps.RegionMap): { [st
 			if allRegionBuffers[region.regionTextureId] == nil then
 				local editableImage: EditableImage =
 					AssetService:CreateEditableImageAsync(Content.fromUri(region.regionTextureId))
+				if not editableImage then
+					error(FAILED_TO_CREATE_EI_MSG)
+				end
 				allRegionBuffers[region.regionTextureId] =
 					editableImage:ReadPixelsBuffer(Vector2.zero, editableImage.Size)
+				editableImage:Destroy()
 			end
 		end
 	end
@@ -166,8 +185,12 @@ local function SetupMeshPartToRegionMap(regionMap: RegionMap)
 			if allSubRegionBuffers[regionData.regionTextureId] == nil then
 				local editableImage: EditableImage =
 					AssetService:CreateEditableImageAsync(Content.fromUri(regionData.regionTextureId))
+				if not editableImage then
+					error(FAILED_TO_CREATE_EI_MSG)
+				end
 				allSubRegionBuffers[regionData.regionTextureId] =
 					editableImage:ReadPixelsBuffer(Vector2.zero, editableImage.Size)
+				editableImage:Destroy()
 			end
 
 			local newRegion: Region = {
@@ -186,10 +209,21 @@ end
 function TextureInfo.new(model, blankData: BlanksData.BlankData)
 	local self = setmetatable({}, TextureInfo)
 
-	self.modelTextureInfo = SetupModelTextures(model)
-
 	self.regionMap = SetupRegionMap(blankData)
 	self.perMeshPartRegionMap = SetupMeshPartToRegionMap(blankData.regionMapIndividual)
+
+	self.reservedStickerEditableImageMap = {}
+	for i=1,Constants.MAX_STICKER_LAYERS do
+		local stickerLayerName = Constants.STICKER_LAYER_PREFIX..i
+		-- TODO: don't hardcode the size
+		local stickerEI = AssetService:CreateEditableImage({Size = Vector2.new(1024,1024)})
+		if not stickerEI then
+			error(FAILED_TO_CREATE_EI_MSG)
+		end
+		self.reservedStickerEditableImageMap[stickerLayerName] = stickerEI
+	end
+
+	self.modelTextureInfo = SetupModelTextures(model)
 
 	self.lastCreatedEditableImage = nil
 	self.lastCreatedEditableImageTextureId = nil
@@ -202,12 +236,15 @@ function TextureInfo:Destroy()
 		for _, layer in layerInfo.inputLayers do
 			layer.editableImage:Destroy()
 		end
-
+		layerInfo.reservedBrushEditableImage:Destroy()
 		layerInfo.outputEditableImage:Destroy()
 	end
 
 	if self.lastCreatedEditableImage then
 		self.lastCreatedEditableImage:Destroy()
+	end
+	for _, reservedStickerEI in pairs(self.reservedStickerEditableImageMap) do
+		reservedStickerEI:Destroy()
 	end
 end
 
@@ -285,9 +322,12 @@ function TextureInfo:GetOrCreateLayer(meshPart, layerName: string): (EditableIma
 		end
 	end
 
-	local newLayer = AssetService:CreateEditableImage({
-		Size = layerInfo.outputEditableImage.Size,
-	})
+	local newLayer
+	if layerName == Constants.BRUSH_LAYER then
+		newLayer = layerInfo.reservedBrushEditableImage
+	else
+		newLayer = self.reservedStickerEditableImageMap[layerName]
+	end
 
 	table.insert(layerInfo.inputLayers, {
 		name = layerName,

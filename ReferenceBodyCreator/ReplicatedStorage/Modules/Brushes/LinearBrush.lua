@@ -109,7 +109,8 @@ function LinearBrush:MovePen(drawInfo: BrushInfo.DrawInfo)
 	end
 
 	local newPosition = drawInfo.textureDrawPosition
-	if self.lastPenPosition and (self.lastPenPosition - newPosition).magnitude > 50 then
+	local alwaysConnect = drawInfo.isVirtualCursorMovement
+	if not alwaysConnect and self.lastPenPosition and (self.lastPenPosition - newPosition).magnitude > 50 then
 		-- Instead of connecting the two positions (which would draw a long line
 		-- across the texture), we want to finish the old stroke and start a new one.
 		self:PenUp()

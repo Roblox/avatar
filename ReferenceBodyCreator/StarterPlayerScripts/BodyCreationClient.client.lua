@@ -3,12 +3,15 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
+local GamepadService = game:GetService("GamepadService")
+local GuiService = game:GetService("GuiService")
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")
 
 local Client = Modules:WaitForChild("Client")
 local UI = Client:WaitForChild("UI")
 local BaseUI = require(UI:WaitForChild("BaseUI"))
+local Message = require(UI:WaitForChild("Message"))
 local MeshEditingWidgetManager = require(Client:WaitForChild("MeshEditingWidgetManager"))
 
 local ModelDisplay = require(Client:WaitForChild("ModelDisplay"))
@@ -39,6 +42,10 @@ local InitializeServerModelEvent = Remotes:WaitForChild("InitializeServerModelEv
 local ResetPlayerModelServerEvent = Remotes:WaitForChild("ResetPlayerModelServer")
 
 local LocalPlayer = Players.LocalPlayer
+
+-- Set to true to have the avatar previewed locally in the game world after exiting edit mode
+-- This is useful for debugging things like animations with the scaled avatar
+local DEBUG_PREVIEW_AVATAR_LOCALLY = false
 
 local CreationManager = {}
 CreationManager.__index = CreationManager
@@ -119,6 +126,11 @@ function CreationManager.new(modelInfo: ModelInfo.ModelInfoClass)
 	self.meshEditingWidgetManager =
 		MeshEditingWidgetManager.new(self.modelInfo, self.modelDisplay, self.inputManager, self.cameraManager)
 
+	-- Enable virtual cursor on console when entering edit mode
+	if GuiService:IsTenFootInterface() then
+		GamepadService:EnableGamepadCursor(nil)
+	end
+
 	return self
 end
 
@@ -132,7 +144,83 @@ local function DestroyLastModel()
 	end
 end
 
+local function FixUpMultipleFolders(humanoidDescription : HumanoidDescription)
+	for _, child in humanoidDescription:GetChildren() do
+		if not child:isA("BodyPartDescription") then
+			continue
+		end
+
+		local bodyPartDescription : BodyPartDescription = child
+		if bodyPartDescription.BodyPart == Enum.BodyPart.Head then
+			continue
+		end
+
+		local bodyPart = bodyPartDescription.Instance
+
+		local newFolder = Instance.new("Folder")
+		newFolder.Name = bodyPart.Name
+
+		local r15ArtistIntent = Instance.new("Folder")
+		r15ArtistIntent.Name = "R15ArtistIntent"
+
+		for _, child in pairs(bodyPart:GetChildren()) do
+			child.Parent = r15ArtistIntent
+		end
+
+		r15ArtistIntent.Parent = newFolder
+
+		local r6 = Instance.new("Folder")
+		r6.Name = "R6"
+		r6.Parent = newFolder
+
+		newFolder.Parent = bodyPart.Parent
+
+		bodyPartDescription.Instance = newFolder
+	end
+end
+
+local function UnAnchorModel(model: Model)
+	for _, child in pairs(model:GetDescendants()) do
+		if child:IsA("BasePart") then
+			child.Anchored = false
+
+			if child.Parent:IsA("Accessory") then
+				child.Name = "Handle"
+			end
+		end
+	end
+end
+
+local function PreviewAvatarLocally(modelInfo: ModelInfo.ModelInfoClass)
+	local model = modelInfo:GetModel():Clone()
+	local humanoidDescription = model:FindFirstChildWhichIsA("HumanoidDescription")
+
+	FixUpMultipleFolders(humanoidDescription)
+
+	local humanoidModel = Players:CreateHumanoidModelFromDescription(humanoidDescription, Enum.HumanoidRigType.R15)
+	humanoidModel.Name = "TestCharacter"
+
+	UnAnchorModel(humanoidModel)
+
+	local currentCharacter = LocalPlayer.Character
+	humanoidModel:SetPrimaryPartCFrame(currentCharacter:GetPrimaryPartCFrame())
+	currentCharacter.Parent = nil
+
+	humanoidModel.Parent = workspace
+
+	LocalPlayer.Character = humanoidModel
+
+	local animate = humanoidModel:FindFirstChild("Animate")
+	animate.Enabled = false
+	task.wait()
+	animate.Enabled = true
+end
+
 function CreationManager:Quit()
+	if DEBUG_PREVIEW_AVATAR_LOCALLY then
+		PreviewAvatarLocally(self.modelInfo)
+	end
+
 	self.modelDisplay:Destroy()
 	self.inputManager:Destroy()
 	self.cameraManager:Destroy()
@@ -155,6 +243,11 @@ function CreationManager:Quit()
 	end
 
 	GetPlayerControls():Enable()
+
+	if GuiService:IsTenFootInterface() then
+		-- Disable virtual cursor on console when leaving edit mode
+		GamepadService:DisableGamepadCursor(nil)
+	end
 end
 
 function CreationManager:SetEditMode(editMode)
@@ -204,13 +297,10 @@ local function InitModelFromBlankData(blankData: BlanksData.BlankData)
 	DestroyLastModel()
 
 	local model = SetupClientModel(blankData)
-	local modelConfig: ModelInfo.ModelConfig = {
-		resizeAccessoriesForDisplay = true,
-	}
 
 	InitializeServerModelEvent:FireServer(blankData.name)
 
-	return ModelInfo.new(model, blankData, modelConfig)
+	return ModelInfo.new(model, blankData)
 end
 
 -- Creates a new CreationManager instance for the given model name
@@ -234,7 +324,28 @@ local function EnterCreationMode(modelName)
 	CreationManager.new(lastEditedModelInfo)
 end
 
-PlayerClickedHumanoidEvent.OnClientEvent:Connect(EnterCreationMode)
+local debounceEnterModel = false
+
+local function EnterCreationModeInitial(modelName)
+	if debounceEnterModel then
+		return
+	end
+	debounceEnterModel = true
+
+	local result, err = pcall(function() EnterCreationMode(modelName) end)
+	if not result then
+		local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+		local loadingScreen = PlayerGui:WaitForChild("ScreenGui"):WaitForChild("LoadingScreen")
+		loadingScreen.Visible = false
+		warn(err)
+		Message.CreateMessageGui("Setup failed, out of Memory.")
+	end
+
+	task.wait(3)
+	debounceEnterModel = false
+end
+
+PlayerClickedHumanoidEvent.OnClientEvent:Connect(EnterCreationModeInitial)
 
 function CreationManager:ResetModelInfo()
 	self:Quit()
