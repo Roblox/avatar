@@ -1,6 +1,4 @@
-local Players = game:GetService("Players")
-
-local Modules = Players.LocalPlayer.PlayerGui.AvatarEditorInGame.Modules
+local Modules = game:GetService("Players").LocalPlayer.PlayerGui.AvatarEditorInGame.Modules
 local LocalizationService = game:GetService("LocalizationService")
 
 local Immutable = require(Modules.Common.Immutable)

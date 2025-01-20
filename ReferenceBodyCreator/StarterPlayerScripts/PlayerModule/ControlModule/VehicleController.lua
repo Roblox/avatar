@@ -7,17 +7,19 @@
 	// NOTE: This works for basic vehicles (single vehicle seat). If you use custom VehicleSeat code,
 	// multiple VehicleSeats or your own implementation of a VehicleSeat this will not work.
 --]]
+
+--[[ Roblox Services ]]--
 local ContextActionService = game:GetService("ContextActionService")
 
 --[[ Constants ]]--
 -- Set this to true if you want to instead use the triggers for the throttle
 local useTriggersForThrottle = true
+
 -- Also set this to true if you want the thumbstick to not affect throttle, only triggers when a gamepad is conected
 local onlyTriggersForThrottle = false
 local ZERO_VECTOR3 = Vector3.new(0,0,0)
 
 local AUTO_PILOT_DEFAULT_MAX_STEERING_ANGLE = 35
-
 
 -- Note that VehicleController does not derive from BaseCharacterController, it is a special case
 local VehicleController = {}

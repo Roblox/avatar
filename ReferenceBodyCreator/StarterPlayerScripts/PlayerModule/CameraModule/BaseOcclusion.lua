@@ -6,6 +6,7 @@
 --[[ The Module ]]--
 local BaseOcclusion = {}
 BaseOcclusion.__index = BaseOcclusion
+
 setmetatable(BaseOcclusion, {
 	__call = function(_, ...)
 		return BaseOcclusion.new(...)

@@ -1,7 +1,7 @@
 local InGameSetup = script.Parent.Parent
 local Modules = InGameSetup.Parent
-local Immutable = require(Modules.Common.Immutable)
 
+local Immutable = require(Modules.Common.Immutable)
 local SetUserRobux = require(Modules.NotLApp.Actions.SetUserRobux)
 
 return function(state, action)

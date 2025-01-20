@@ -1,8 +1,10 @@
+--[[ Roblox Services ]]--
 local AvatarCreationService = game:GetService("AvatarCreationService")
-local Players = game:GetService("Players")
+local PlayersService = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 
+--[[ Constants ]]--
 local Modules = ReplicatedStorage:WaitForChild("Modules")
 local ModelInfo = require(Modules:WaitForChild("ModelInfo"))
 local Utils = require(Modules:WaitForChild("Utils"))
@@ -180,4 +182,4 @@ local function OnPlayerRemoving(player)
 	ResetPlayerModel(player)
 end
 
-Players.PlayerRemoving:Connect(OnPlayerRemoving)
+PlayersService.PlayerRemoving:Connect(OnPlayerRemoving)

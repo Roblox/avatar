@@ -1,13 +1,16 @@
 -- CreationManager is the main module for the body creation demo.
 -- It is responsible for setting up the model, layers, tools, and UI.
 
+--[[ Roblox Services ]]--
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Players = game:GetService("Players")
+local PlayersService = game:GetService("Players")
 local GamepadService = game:GetService("GamepadService")
 local GuiService = game:GetService("GuiService")
 
+local LocalPlayer = PlayersService.LocalPlayer
 local Modules = ReplicatedStorage:WaitForChild("Modules")
 
+--[[ Constants ]]--
 local Client = Modules:WaitForChild("Client")
 local UI = Client:WaitForChild("UI")
 local BaseUI = require(UI:WaitForChild("BaseUI"))
@@ -29,7 +32,7 @@ local BlanksData = require(Config:WaitForChild("BlanksData"))
 local MeshManipulation = Modules:WaitForChild("MeshManipulation")
 local MeshInfo = require(MeshManipulation:WaitForChild("MeshInfo"))
 
--- Tools
+--[[ Tools ]]--
 local Tools = Client:WaitForChild("Tools")
 local FabricTool = require(Tools:WaitForChild("FabricTool"))
 local StickerTool = require(Tools:WaitForChild("StickerTool"))
@@ -41,7 +44,13 @@ local PlayerClickedHumanoidEvent = Remotes:WaitForChild("OnPlayerClickedHumanoid
 local InitializeServerModelEvent = Remotes:WaitForChild("InitializeServerModelEvent")
 local ResetPlayerModelServerEvent = Remotes:WaitForChild("ResetPlayerModelServer")
 
-local LocalPlayer = Players.LocalPlayer
+-- Set visibility of the loading screen
+local function SetLoadingScreenVisible(visible: boolean)
+	local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+	local LoadingScreen = PlayerGui:WaitForChild("ScreenGui"):WaitForChild("LoadingScreen")
+	LoadingScreen.Visible = visible
+	return PlayerGui, LoadingScreen
+end
 
 -- Set to true to have the avatar previewed locally in the game world after exiting edit mode
 -- This is useful for debugging things like animations with the scaled avatar
@@ -80,9 +89,7 @@ end
 
 local function SetupClientModel(blankData: BlanksData.BlankData): Model
 	-- Create loading screen while model is loading
-	local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
-	local loadingScreen = PlayerGui:WaitForChild("ScreenGui"):WaitForChild("LoadingScreen")
-	loadingScreen.Visible = true
+	local PlayerGui, LoadingScreen = SetLoadingScreenVisible(true)
 
 	local newModel: Model = blankData.sourceModel:Clone()
 	newModel.Parent = workspace
@@ -102,7 +109,6 @@ function CreationManager.new(modelInfo: ModelInfo.ModelInfoClass)
 	GetPlayerControls():Disable()
 
 	self.cameraResetPos = workspace.CurrentCamera.CFrame.Position
-
 	self.modelInfo = modelInfo
 
 	-- Setup camera controls
@@ -111,20 +117,13 @@ function CreationManager.new(modelInfo: ModelInfo.ModelInfoClass)
 	self.inputManager = InputManager.new(self.cameraManager, self.modelDisplay)
 
 	-- Hide loading screen now that model + textures are finished loading
-	local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
-	local loadingScreen = PlayerGui:WaitForChild("ScreenGui"):WaitForChild("LoadingScreen")
-	loadingScreen.Visible = false
+	local PlayerGui, LoadingScreen = SetLoadingScreenVisible(false)
 
 	self.brushTool = BrushTool.new(self.modelInfo, self.inputManager)
-
 	self.fabricTool = FabricTool.new(self.modelInfo)
-
 	self.stickerTool = StickerTool.new(self.modelInfo, self.inputManager)
-
 	self.baseUI = BaseUI.new(self, self.fabricTool, self.stickerTool, self.brushTool)
-
-	self.meshEditingWidgetManager =
-		MeshEditingWidgetManager.new(self.modelInfo, self.modelDisplay, self.inputManager, self.cameraManager)
+	self.meshEditingWidgetManager = MeshEditingWidgetManager.new(self.modelInfo, self.modelDisplay, self.inputManager, self.cameraManager)
 
 	-- Enable virtual cursor on console when entering edit mode
 	if GuiService:IsTenFootInterface() then
@@ -197,7 +196,7 @@ local function PreviewAvatarLocally(modelInfo: ModelInfo.ModelInfoClass)
 
 	FixUpMultipleFolders(humanoidDescription)
 
-	local humanoidModel = Players:CreateHumanoidModelFromDescription(humanoidDescription, Enum.HumanoidRigType.R15)
+	local humanoidModel = PlayersService:CreateHumanoidModelFromDescription(humanoidDescription, Enum.HumanoidRigType.R15)
 	humanoidModel.Name = "TestCharacter"
 
 	UnAnchorModel(humanoidModel)
@@ -234,8 +233,10 @@ function CreationManager:Quit()
 	self.baseUI:Destroy()
 
 	workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+
 	local characterRoot = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
 	local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+
 	if humanoid then
 		workspace.CurrentCamera.CameraSubject = humanoid
 		workspace.CurrentCamera.FieldOfView = 70
@@ -295,11 +296,9 @@ end
 local function InitModelFromBlankData(blankData: BlanksData.BlankData)
 	-- Editing a different model, so destroy any existing modelInfo
 	DestroyLastModel()
-
 	local model = SetupClientModel(blankData)
 
 	InitializeServerModelEvent:FireServer(blankData.name)
-
 	return ModelInfo.new(model, blankData)
 end
 
@@ -334,9 +333,7 @@ local function EnterCreationModeInitial(modelName)
 
 	local result, err = pcall(function() EnterCreationMode(modelName) end)
 	if not result then
-		local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
-		local loadingScreen = PlayerGui:WaitForChild("ScreenGui"):WaitForChild("LoadingScreen")
-		loadingScreen.Visible = false
+		local PlayerGui, LoadingScreen = SetLoadingScreenVisible(false)
 		warn(err)
 		Message.CreateMessageGui("Setup failed, out of Memory.")
 	end
@@ -349,10 +346,12 @@ PlayerClickedHumanoidEvent.OnClientEvent:Connect(EnterCreationModeInitial)
 
 function CreationManager:ResetModelInfo()
 	self:Quit()
+
 	if not lastEditedModelInfo then
 		warn("No model info to reset")
 		return
 	end
+
 	local modelName = lastEditedModelInfo:GetBlankName()
 	DestroyLastModel()
 	EnterCreationMode(modelName)

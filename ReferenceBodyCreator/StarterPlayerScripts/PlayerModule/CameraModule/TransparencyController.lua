@@ -27,7 +27,6 @@ function TransparencyController.new()
 	return self
 end
 
-
 function TransparencyController:HasToolAncestor(object: Instance)
 	if object.Parent == nil then return false end
 	return object.Parent:IsA('Tool') or self:HasToolAncestor(object.Parent)
@@ -119,7 +118,6 @@ function TransparencyController:SetupTransparency(character)
 	end)
 	self:CachePartsRecursive(character)
 end
-
 
 function TransparencyController:Enable(enable: boolean)
 	if self.enabled ~= enable then

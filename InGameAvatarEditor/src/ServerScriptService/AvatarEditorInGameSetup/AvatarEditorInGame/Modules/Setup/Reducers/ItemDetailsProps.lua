@@ -1,6 +1,4 @@
-local Players = game:GetService("Players")
-
-local Modules = Players.LocalPlayer.PlayerGui.AvatarEditorInGame.Modules
+local Modules = game:GetService("Players").LocalPlayer.PlayerGui.AvatarEditorInGame.Modules
 
 local InGameSetup = script.Parent.Parent
 local SetItemDetailsProps = require(InGameSetup.Actions.SetItemDetailsProps)

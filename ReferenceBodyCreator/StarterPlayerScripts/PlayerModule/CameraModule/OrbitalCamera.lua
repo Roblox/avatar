@@ -3,11 +3,22 @@
 	2018 Camera Update - AllYourBlox
 --]]
 
+--[[ Optimizations functions ]]--
+local MRad, MMin, MMax, MClamp, MAsin, MSign, MAbs, MPI = math.rad, math.min, math.max, math.clamp, math.asin, math.sign, math.abs, math.pi
+
+--[[ Roblox Services ]]--
+local PlayersService = game:GetService('Players')
+local VRService = game:GetService("VRService")
+
+--[[ Constants ]]--
+local Util = require(script.Parent:WaitForChild("CameraUtils"))
+local CameraInput = require(script.Parent:WaitForChild("CameraInput"))
+
 -- Local private variables and constants
 local UNIT_Z = Vector3.new(0,0,1)
 local X1_Y0_Z1 = Vector3.new(1,0,1)	--Note: not a unit vector, used for projecting onto XZ plane
 local ZERO_VECTOR3 = Vector3.new(0,0,0)
-local TAU = 2 * math.pi
+local TAU = 2 * MPI
 
 -- Do not edit these values, they are not the developer-set limits, they are limits
 -- to the values the camera system equations can correctly handle
@@ -26,18 +37,10 @@ externalProperties["CWAzimuthTravel"]  = 90	-- How many degrees the camera is al
 externalProperties["CCWAzimuthTravel"] = 90	-- How many degrees the camera is allowed to rotate from the reference position, CCW as seen from above
 externalProperties["UseAzimuthLimits"] = false -- Full rotation around Y axis available by default
 
-local Util = require(script.Parent:WaitForChild("CameraUtils"))
-local CameraInput = require(script.Parent:WaitForChild("CameraInput"))
-
---[[ Services ]]--
-local PlayersService = game:GetService('Players')
-local VRService = game:GetService("VRService")
-
 --[[ The Module ]]--
 local BaseCamera = require(script.Parent:WaitForChild("BaseCamera"))
 local OrbitalCamera = setmetatable({}, BaseCamera)
 OrbitalCamera.__index = OrbitalCamera
-
 
 function OrbitalCamera.new()
 	local self = setmetatable(BaseCamera.new(), OrbitalCamera)
@@ -106,12 +109,12 @@ function OrbitalCamera:LoadOrCreateNumberValueParameter(name: string, valueType,
 end
 
 function OrbitalCamera:SetAndBoundsCheckAzimuthValues()
-	self.minAzimuthAbsoluteRad = math.rad(self.externalProperties["ReferenceAzimuth"]) - math.abs(math.rad(self.externalProperties["CWAzimuthTravel"]))
-	self.maxAzimuthAbsoluteRad = math.rad(self.externalProperties["ReferenceAzimuth"]) + math.abs(math.rad(self.externalProperties["CCWAzimuthTravel"]))
+	self.minAzimuthAbsoluteRad = MRad(self.externalProperties["ReferenceAzimuth"]) - MAbs(MRad(self.externalProperties["CWAzimuthTravel"]))
+	self.maxAzimuthAbsoluteRad = MRad(self.externalProperties["ReferenceAzimuth"]) + MAbs(MRad(self.externalProperties["CCWAzimuthTravel"]))
 	self.useAzimuthLimits = self.externalProperties["UseAzimuthLimits"]
 	if self.useAzimuthLimits then
-		self.curAzimuthRad = math.max(self.curAzimuthRad, self.minAzimuthAbsoluteRad)
-		self.curAzimuthRad = math.min(self.curAzimuthRad, self.maxAzimuthAbsoluteRad)
+		self.curAzimuthRad = MMax(self.curAzimuthRad, self.minAzimuthAbsoluteRad)
+		self.curAzimuthRad = MMin(self.curAzimuthRad, self.maxAzimuthAbsoluteRad)
 	end
 end
 
@@ -121,21 +124,21 @@ function OrbitalCamera:SetAndBoundsCheckElevationValues()
 	-- is changed, both of the internal values in radians are recalculated. This allows for
 	-- A developer to change the values in any order and for the end results to be that the
 	-- internal values adjust to match intent as best as possible.
-	local minElevationDeg = math.max(self.externalProperties["MinElevation"], MIN_ALLOWED_ELEVATION_DEG)
-	local maxElevationDeg = math.min(self.externalProperties["MaxElevation"], MAX_ALLOWED_ELEVATION_DEG)
+	local minElevationDeg = MMax(self.externalProperties["MinElevation"], MIN_ALLOWED_ELEVATION_DEG)
+	local maxElevationDeg = MMin(self.externalProperties["MaxElevation"], MAX_ALLOWED_ELEVATION_DEG)
 
 	-- Set internal values in radians
-	self.minElevationRad = math.rad(math.min(minElevationDeg, maxElevationDeg))
-	self.maxElevationRad = math.rad(math.max(minElevationDeg, maxElevationDeg))
-	self.curElevationRad = math.max(self.curElevationRad, self.minElevationRad)
-	self.curElevationRad = math.min(self.curElevationRad, self.maxElevationRad)
+	self.minElevationRad = MRad(MMin(minElevationDeg, maxElevationDeg))
+	self.maxElevationRad = MRad(MMax(minElevationDeg, maxElevationDeg))
+	self.curElevationRad = MMax(self.curElevationRad, self.minElevationRad)
+	self.curElevationRad = MMin(self.curElevationRad, self.maxElevationRad)
 end
 
 function OrbitalCamera:SetAndBoundsCheckDistanceValues()
 	self.minDistance = self.externalProperties["MinDistance"]
 	self.maxDistance = self.externalProperties["MaxDistance"]
-	self.curDistance = math.max(self.curDistance, self.minDistance)
-	self.curDistance = math.min(self.curDistance, self.maxDistance)
+	self.curDistance = MMax(self.curDistance, self.minDistance)
+	self.curDistance = MMin(self.curDistance, self.maxDistance)
 end
 
 -- This loads from, or lazily creates, NumberValue objects for exposed parameters
@@ -155,8 +158,8 @@ function OrbitalCamera:LoadNumberValueParameters()
 	self:LoadOrCreateNumberValueParameter("UseAzimuthLimits", "BoolValue", self.SetAndBoundsCheckAzimuthValues)
 
 	-- Internal values set (in radians, from degrees), plus sanitization
-	self.curAzimuthRad = math.rad(self.externalProperties["ReferenceAzimuth"])
-	self.curElevationRad = math.rad(self.externalProperties["InitialElevation"])
+	self.curAzimuthRad = MRad(self.externalProperties["ReferenceAzimuth"])
+	self.curElevationRad = MRad(self.externalProperties["InitialElevation"])
 	self.curDistance = self.externalProperties["InitialDistance"]
 
 	self:SetAndBoundsCheckAzimuthValues()
@@ -175,7 +178,7 @@ function OrbitalCamera:SetInitialOrientation(humanoid: Humanoid)
 	end
 	local newDesiredLook = (humanoid.RootPart.CFrame.lookVector - Vector3.new(0,0.23,0)).unit
 	local horizontalShift = Util.GetAngleBetweenXZVectors(newDesiredLook, self:GetCameraLookVector())
-	local vertShift = math.asin(self:GetCameraLookVector().y) - math.asin(newDesiredLook.y)
+	local vertShift = MAsin(self:GetCameraLookVector().y) - MAsin(newDesiredLook.y)
 	if not Util.IsFinite(horizontalShift) then
 		horizontalShift = 0
 	end
@@ -192,10 +195,10 @@ end
 function OrbitalCamera:SetCameraToSubjectDistance(desiredSubjectDistance)
 	local player = PlayersService.LocalPlayer
 	if player then
-		self.currentSubjectDistance = math.clamp(desiredSubjectDistance, self.minDistance, self.maxDistance)
+		self.currentSubjectDistance = MClamp(desiredSubjectDistance, self.minDistance, self.maxDistance)
 
 		-- OrbitalCamera is not allowed to go into the first-person range
-		self.currentSubjectDistance = math.max(self.currentSubjectDistance, self.FIRST_PERSON_DISTANCE_THRESHOLD)
+		self.currentSubjectDistance = MMax(self.currentSubjectDistance, self.FIRST_PERSON_DISTANCE_THRESHOLD)
 	end
 	self.inFirstPerson = false
 	self:UpdateMouseBehavior()
@@ -204,8 +207,8 @@ end
 
 function OrbitalCamera:CalculateNewLookVector(suppliedLookVector: Vector3, xyRotateVector: Vector2): Vector3
 	local currLookVector: Vector3 = suppliedLookVector or self:GetCameraLookVector()
-	local currPitchAngle: number = math.asin(currLookVector.y)
-	local yTheta: number = math.clamp(xyRotateVector.y, currPitchAngle - math.rad(MAX_ALLOWED_ELEVATION_DEG), currPitchAngle - math.rad(MIN_ALLOWED_ELEVATION_DEG))
+	local currPitchAngle: number = MAsin(currLookVector.y)
+	local yTheta: number = MClamp(xyRotateVector.y, currPitchAngle - MRad(MAX_ALLOWED_ELEVATION_DEG), currPitchAngle - MRad(MIN_ALLOWED_ELEVATION_DEG))
 	local constrainedRotateInput: Vector2 = Vector2.new(xyRotateVector.x, yTheta)
 	local startCFrame: CFrame = CFrame.new(ZERO_VECTOR3, currLookVector)
 	local newLookVector: Vector3 = (CFrame.Angles(0, -constrainedRotateInput.x, 0) * startCFrame * CFrame.Angles(-constrainedRotateInput.y,0,0)).lookVector
@@ -257,7 +260,7 @@ function OrbitalCamera:Update(dt: number): (CFrame, CFrame)
 
 			-- Only move the camera if it exceeded a maximum distance to the subject in VR
 			if distToSubject > self.currentSubjectDistance or flaggedRotateInput.x ~= 0 then
-				local desiredDist = math.min(distToSubject, self.currentSubjectDistance)
+				local desiredDist = MMin(distToSubject, self.currentSubjectDistance)
 
 				-- Note that CalculateNewLookVector is overridden from BaseCamera
 				vecToSubject = self:CalculateNewLookVector(vecToSubject.unit * X1_Y0_Z1, Vector2.new(flaggedRotateInput.x, 0)) * desiredDist
@@ -275,12 +278,12 @@ function OrbitalCamera:Update(dt: number): (CFrame, CFrame)
 			self.curAzimuthRad = self.curAzimuthRad - flaggedRotateInput.x
 
 			if self.useAzimuthLimits then
-				self.curAzimuthRad = math.clamp(self.curAzimuthRad, self.minAzimuthAbsoluteRad, self.maxAzimuthAbsoluteRad)
+				self.curAzimuthRad = MClamp(self.curAzimuthRad, self.minAzimuthAbsoluteRad, self.maxAzimuthAbsoluteRad)
 			else
-				self.curAzimuthRad = (self.curAzimuthRad ~= 0) and (math.sign(self.curAzimuthRad) * (math.abs(self.curAzimuthRad) % TAU)) or 0
+				self.curAzimuthRad = (self.curAzimuthRad ~= 0) and (MSign(self.curAzimuthRad) * (MAbs(self.curAzimuthRad) % TAU)) or 0
 			end
 
-			self.curElevationRad = math.clamp(self.curElevationRad + flaggedRotateInput.y, self.minElevationRad, self.maxElevationRad)
+			self.curElevationRad = MClamp(self.curElevationRad + flaggedRotateInput.y, self.minElevationRad, self.maxElevationRad)
 
 			local cameraPosVector = self.currentSubjectDistance * ( CFrame.fromEulerAnglesYXZ( -self.curElevationRad, self.curAzimuthRad, 0 ) * UNIT_Z )
 			local camPos = subjectPosition + cameraPosVector

@@ -74,11 +74,13 @@ local USER_GAME_SETTINGS_PROPERTIES =
 }
 
 --[[ Roblox Services ]]--
-local Players = game:GetService("Players")
+local PlayersService = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local VRService = game:GetService("VRService")
 local UserGameSettings = UserSettings():GetService("UserGameSettings")
+
+local LocalPlayer = PlayersService.LocalPlayer
 
 -- Static camera utils
 local CameraUtils = require(script:WaitForChild("CameraUtils"))
@@ -89,6 +91,7 @@ local ClassicCamera = require(script:WaitForChild("ClassicCamera"))
 local OrbitalCamera = require(script:WaitForChild("OrbitalCamera"))
 local LegacyCamera = require(script:WaitForChild("LegacyCamera"))
 local VehicleCamera = require(script:WaitForChild("VehicleCamera"))
+
 -- New VR System Modules
 local VRCamera = require(script:WaitForChild("VRCamera"))
 local VRVehicleCamera = require(script:WaitForChild("VRVehicleCamera"))
@@ -107,7 +110,7 @@ local instantiatedOcclusionModules = {}
 
 -- Management of which options appear on the Roblox User Settings screen
 do
-	local PlayerScripts = Players.LocalPlayer:WaitForChild("PlayerScripts")
+	local PlayerScripts = LocalPlayer:WaitForChild("PlayerScripts")
 
 	PlayerScripts:RegisterTouchCameraMovementMode(Enum.TouchCameraMovementMode.Default)
 	PlayerScripts:RegisterTouchCameraMovementMode(Enum.TouchCameraMovementMode.Follow)
@@ -118,7 +121,6 @@ do
 	PlayerScripts:RegisterComputerCameraMovementMode(Enum.ComputerCameraMovementMode.Classic)
 	PlayerScripts:RegisterComputerCameraMovementMode(Enum.ComputerCameraMovementMode.CameraToggle)
 end
-
 
 function CameraModule.new()
 	local self = setmetatable({},CameraModule)
@@ -136,12 +138,12 @@ function CameraModule.new()
 	self.cameraTypeChangedConn = nil
 
 	-- Adds CharacterAdded and CharacterRemoving event handlers for all current players
-	for _,player in pairs(Players:GetPlayers()) do
+	for _,player in pairs(PlayersService:GetPlayers()) do
 		self:OnPlayerAdded(player)
 	end
 
 	-- Adds CharacterAdded and CharacterRemoving event handlers for all players who join in the future
-	Players.PlayerAdded:Connect(function(player)
+	PlayersService.PlayerAdded:Connect(function(player)
 		self:OnPlayerAdded(player)
 	end)
 
@@ -159,13 +161,13 @@ function CameraModule.new()
 	end
 
 	self:ActivateCameraController(self:GetCameraControlChoice())
-	self:ActivateOcclusionModule(Players.LocalPlayer.DevCameraOcclusionMode)
+	self:ActivateOcclusionModule(LocalPlayer.DevCameraOcclusionMode)
 	self:OnCurrentCameraChanged() -- Does initializations and makes first camera controller
 	RunService:BindToRenderStep("cameraRenderUpdate", Enum.RenderPriority.Camera.Value, function(dt) self:Update(dt) end)
 
 	-- Connect listeners to camera-related properties
 	for _, propertyName in pairs(PLAYER_CAMERA_PROPERTIES) do
-		Players.LocalPlayer:GetPropertyChangedSignal(propertyName):Connect(function()
+		LocalPlayer:GetPropertyChangedSignal(propertyName):Connect(function()
 			self:OnLocalPlayerCameraPropertyChanged(propertyName)
 		end)
 	end
@@ -188,7 +190,7 @@ function CameraModule.new()
 end
 
 function CameraModule:GetCameraMovementModeFromSettings()
-	local cameraMode = Players.LocalPlayer.CameraMode
+	local cameraMode = LocalPlayer.CameraMode
 
 	-- Lock First Person trumps all other settings and forces ClassicCamera
 	if cameraMode == Enum.CameraMode.LockFirstPerson then
@@ -197,10 +199,10 @@ function CameraModule:GetCameraMovementModeFromSettings()
 
 	local devMode, userMode
 	if UserInputService.TouchEnabled then
-		devMode = CameraUtils.ConvertCameraModeEnumToStandard(Players.LocalPlayer.DevTouchCameraMode)
+		devMode = CameraUtils.ConvertCameraModeEnumToStandard(LocalPlayer.DevTouchCameraMode)
 		userMode = CameraUtils.ConvertCameraModeEnumToStandard(UserGameSettings.TouchCameraMovementMode)
 	else
-		devMode = CameraUtils.ConvertCameraModeEnumToStandard(Players.LocalPlayer.DevComputerCameraMode)
+		devMode = CameraUtils.ConvertCameraModeEnumToStandard(LocalPlayer.DevComputerCameraMode)
 		userMode = CameraUtils.ConvertCameraModeEnumToStandard(UserGameSettings.ComputerCameraMovementMode)
 	end
 
@@ -273,12 +275,12 @@ function CameraModule:ActivateOcclusionModule(occlusionMode: Enum.DevCameraOcclu
 		-- Poppercam needs all player characters and the camera subject
 		if occlusionMode == Enum.DevCameraOcclusionMode.Invisicam then
 			-- Optimization to only send Invisicam what we know it needs
-			if Players.LocalPlayer.Character then
-				self.activeOcclusionModule:CharacterAdded(Players.LocalPlayer.Character, Players.LocalPlayer )
+			if LocalPlayer.Character then
+				self.activeOcclusionModule:CharacterAdded(LocalPlayer.Character, LocalPlayer )
 			end
 		else
 			-- When Poppercam is enabled, we send it all existing player characters for its raycast ignore list
-			for _, player in pairs(Players:GetPlayers()) do
+			for _, player in pairs(PlayersService:GetPlayers()) do
 				if player and player.Character then
 					self.activeOcclusionModule:CharacterAdded(player.Character, player)
 				end
@@ -481,7 +483,7 @@ function CameraModule:OnLocalPlayerCameraPropertyChanged(propertyName: string)
 	if propertyName == "CameraMode" then
 		-- CameraMode is only used to turn on/off forcing the player into first person view. The
 		-- Note: The case "Classic" is used for all other views and does not correspond only to the ClassicCamera module
-		if Players.LocalPlayer.CameraMode == Enum.CameraMode.LockFirstPerson then
+		if LocalPlayer.CameraMode == Enum.CameraMode.LockFirstPerson then
 			-- Locked in first person, use ClassicCamera which supports this
 			if not self.activeCameraController or self.activeCameraController:GetModuleName() ~= "ClassicCamera" then
 				self:ActivateCameraController(CameraUtils.ConvertCameraModeEnumToStandard(Enum.DevComputerCameraMovementMode.Classic))
@@ -490,12 +492,12 @@ function CameraModule:OnLocalPlayerCameraPropertyChanged(propertyName: string)
 			if self.activeCameraController then
 				self.activeCameraController:UpdateForDistancePropertyChange()
 			end
-		elseif Players.LocalPlayer.CameraMode == Enum.CameraMode.Classic then
+		elseif LocalPlayer.CameraMode == Enum.CameraMode.Classic then
 			-- Not locked in first person view
 			local cameraMovementMode = self:GetCameraMovementModeFromSettings()
 			self:ActivateCameraController(CameraUtils.ConvertCameraModeEnumToStandard(cameraMovementMode))
 		else
-			warn("Unhandled value for property player.CameraMode: ",Players.LocalPlayer.CameraMode)
+			warn("Unhandled value for property player.CameraMode: ",LocalPlayer.CameraMode)
 		end
 
 	elseif propertyName == "DevComputerCameraMode" or
@@ -504,7 +506,7 @@ function CameraModule:OnLocalPlayerCameraPropertyChanged(propertyName: string)
 		self:ActivateCameraController(CameraUtils.ConvertCameraModeEnumToStandard(cameraMovementMode))
 
 	elseif propertyName == "DevCameraOcclusionMode" then
-		self:ActivateOcclusionModule(Players.LocalPlayer.DevCameraOcclusionMode)
+		self:ActivateOcclusionModule(LocalPlayer.DevCameraOcclusionMode)
 
 	elseif propertyName == "CameraMinZoomDistance" or propertyName == "CameraMaxZoomDistance" then
 		if self.activeCameraController then
@@ -564,7 +566,7 @@ end
 -- Formerly getCurrentCameraMode, this function resolves developer and user camera control settings to
 -- decide which camera control module should be instantiated. The old method of converting redundant enum types
 function CameraModule:GetCameraControlChoice()
-	local player = Players.LocalPlayer
+	local player = LocalPlayer
 
 	if player then
 		if self.lastInputType == Enum.UserInputType.Touch or UserInputService.TouchEnabled then

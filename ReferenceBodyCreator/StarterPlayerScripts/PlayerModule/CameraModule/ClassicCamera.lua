@@ -6,6 +6,14 @@
 	latter of which is currently not distinguished from Classic
 --]]
 
+--[[ Roblox Services ]]--
+local PlayersService = game:GetService("Players")
+local VRService = game:GetService("VRService")
+
+--[[ Constants ]]--
+local CameraInput = require(script.Parent:WaitForChild("CameraInput"))
+local Util = require(script.Parent:WaitForChild("CameraUtils"))
+
 -- Local private variables and constants
 local ZERO_VECTOR2 = Vector2.new(0,0)
 
@@ -17,13 +25,6 @@ local TIME_BEFORE_AUTO_ROTATE = 2       -- Seconds, used when auto-aligning came
 local INITIAL_CAMERA_ANGLE = CFrame.fromOrientation(math.rad(-15), 0, 0)
 local ZOOM_SENSITIVITY_CURVATURE = 0.5
 local FIRST_PERSON_DISTANCE_MIN = 0.5
-
---[[ Services ]]--
-local PlayersService = game:GetService("Players")
-local VRService = game:GetService("VRService")
-
-local CameraInput = require(script.Parent:WaitForChild("CameraInput"))
-local Util = require(script.Parent:WaitForChild("CameraUtils"))
 
 --[[ The Module ]]--
 local BaseCamera = require(script.Parent:WaitForChild("BaseCamera"))

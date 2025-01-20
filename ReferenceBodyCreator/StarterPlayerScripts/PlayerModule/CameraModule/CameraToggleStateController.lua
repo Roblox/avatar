@@ -1,5 +1,5 @@
 --!strict
-local Players = game:GetService("Players")
+local PlayersService = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local GameSettings = UserSettings():GetService("UserGameSettings")
 
@@ -21,10 +21,10 @@ end
 
 local Mouse
 if not FFlagUserCameraToggleDontSetMouseIconEveryFrame then
-	local LocalPlayer = Players.LocalPlayer
+	local LocalPlayer = PlayersService.LocalPlayer
 	if not LocalPlayer then
-		Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
-		LocalPlayer = Players.LocalPlayer
+		PlayersService:GetPropertyChangedSignal("LocalPlayer"):Wait()
+		LocalPlayer = PlayersService.LocalPlayer
 	end
 
 	Mouse = LocalPlayer:GetMouse()

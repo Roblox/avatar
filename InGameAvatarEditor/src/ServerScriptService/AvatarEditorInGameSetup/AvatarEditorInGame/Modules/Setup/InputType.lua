@@ -1,4 +1,3 @@
-
 return {
 	MouseAndKeyboard = "MouseAndKeyboard",
 	Touch = "Touch",

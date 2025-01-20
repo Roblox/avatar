@@ -80,34 +80,22 @@ function Keyboard:UpdateJump()
 end
 
 function Keyboard:BindContextActions()
-
-	-- Note: In the previous version of this code, the movement values were not zeroed-out on UserInputState. Cancel, now they are,
+	-- Note: In the previous version of this code, the movement values were not zeroed-out on UserInputState.Cancel, now they are,
 	-- which fixes them from getting stuck on.
 	-- We return ContextActionResult.Pass here for legacy reasons.
 	-- Many games rely on gameProcessedEvent being false on UserInputService.InputBegan for these control actions.
-	local handleMoveForward = function(actionName, inputState, inputObject)
-		self.forwardValue = (inputState == Enum.UserInputState.Begin) and -1 or 0
-		self:UpdateMovement(inputState)
-		return Enum.ContextActionResult.Pass
+	local function createActionHandler(valueSetter)
+		return function(actionName, inputState, inputObject)
+			valueSetter((inputState == Enum.UserInputState.Begin) and 1 or 0)
+			self:UpdateMovement(inputState)
+			return Enum.ContextActionResult.Pass
+		end
 	end
 
-	local handleMoveBackward = function(actionName, inputState, inputObject)
-		self.backwardValue = (inputState == Enum.UserInputState.Begin) and 1 or 0
-		self:UpdateMovement(inputState)
-		return Enum.ContextActionResult.Pass
-	end
-
-	local handleMoveLeft = function(actionName, inputState, inputObject)
-		self.leftValue = (inputState == Enum.UserInputState.Begin) and -1 or 0
-		self:UpdateMovement(inputState)
-		return Enum.ContextActionResult.Pass
-	end
-
-	local handleMoveRight = function(actionName, inputState, inputObject)
-		self.rightValue = (inputState == Enum.UserInputState.Begin) and 1 or 0
-		self:UpdateMovement(inputState)
-		return Enum.ContextActionResult.Pass
-	end
+	local handleMoveForward = createActionHandler(function(value) self.forwardValue = -value end)
+	local handleMoveBackward = createActionHandler(function(value) self.backwardValue = value end)
+	local handleMoveLeft = createActionHandler(function(value) self.leftValue = -value end)
+	local handleMoveRight = createActionHandler(function(value) self.rightValue = value end)
 
 	local handleJumpAction = function(actionName, inputState, inputObject)
 		self.jumpRequested = self.jumpEnabled and (inputState == Enum.UserInputState.Begin)

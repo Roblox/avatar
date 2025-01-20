@@ -3,14 +3,15 @@
 	2018 Camera Update - AllYourBlox
 --]]
 
-local ZERO_VECTOR2 = Vector2.new()
-local PITCH_LIMIT = math.rad(80)
+--[[ Roblox Services ]]--
+local PlayersService = game:GetService('Players')
 
+--[[ Constants ]]--
 local Util = require(script.Parent:WaitForChild("CameraUtils"))
 local CameraInput = require(script.Parent:WaitForChild("CameraInput"))
 
---[[ Services ]]--
-local PlayersService = game:GetService('Players')
+local ZERO_VECTOR2 = Vector2.new()
+local PITCH_LIMIT = math.rad(80)
 
 --[[ The Module ]]--
 local BaseCamera = require(script.Parent:WaitForChild("BaseCamera"))

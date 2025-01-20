@@ -1,3 +1,12 @@
+--[[ Roblox Services ]]--
+local PlayersService = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+local LocalPlayer = PlayersService.LocalPlayer
+
+--[[ Constants ]]--
 local ClickToMoveDisplay = {}
 
 local FAILURE_ANIMATION_ID = "rbxassetid://2874840706"
@@ -32,13 +41,6 @@ local TRAIL_DOT_MIN_SCALE = 1
 local TRAIL_DOT_MIN_DISTANCE = 10
 local TRAIL_DOT_MAX_SCALE = 2.5
 local TRAIL_DOT_MAX_DISTANCE = 100
-
-local PlayersService = game:GetService("Players")
-local TweenService = game:GetService("TweenService")
-local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
-
-local LocalPlayer = PlayersService.LocalPlayer
 
 local function CreateWaypointTemplates()
 	local TrailDotTemplate = Instance.new("Part")
@@ -84,7 +86,6 @@ local function CreateWaypointTemplates()
 	EndWaypointImageLabel.Size = UDim2.new(1, 0, 1, 0)
 	EndWaypointImageLabel.Parent = EndWaypointBillboard
 
-
 	local FailureWaypointTemplate = Instance.new("Part")
 	FailureWaypointTemplate.Size = Vector3.new(2, 2, 2)
 	FailureWaypointTemplate.Anchored = true
@@ -115,9 +116,7 @@ local function CreateWaypointTemplates()
 	local FailureWaypointImageLabel = Instance.new("ImageLabel")
 	FailureWaypointImageLabel.Image = EndWaypointIcon
 	FailureWaypointImageLabel.BackgroundTransparency = 1
-	FailureWaypointImageLabel.Position = UDim2.new(
-		0, -WAYPOINT_BILLBOARD_SIZE.X.Offset/2, 0, -WAYPOINT_BILLBOARD_SIZE.Y.Offset
-	)
+	FailureWaypointImageLabel.Position = UDim2.new(0, -WAYPOINT_BILLBOARD_SIZE.X.Offset/2, 0, -WAYPOINT_BILLBOARD_SIZE.Y.Offset)
 	FailureWaypointImageLabel.Size = WAYPOINT_BILLBOARD_SIZE
 	FailureWaypointImageLabel.Parent = FailureWaypointFrame
 

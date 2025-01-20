@@ -3,6 +3,12 @@
 	2018 Camera Update - AllYourBlox
 --]]
 
+--[[ Roblox Services ]]--
+local PlayersService = game:GetService("Players")
+local ContextActionService = game:GetService("ContextActionService")
+
+local LocalPlayer = PlayersService.LocalPlayer
+
 --[[ Constants ]]--
 local DEFAULT_MOUSE_LOCK_CURSOR = "rbxasset://textures/MouseLockedCursor.png"
 
@@ -18,11 +24,9 @@ do
 end
 
 --[[ Services ]]--
-local PlayersService = game:GetService("Players")
-local ContextActionService = game:GetService("ContextActionService")
 local Settings = UserSettings()	-- ignore warning
 local GameSettings = Settings.GameSettings
-local Mouse = if FFlagUserCameraToggleDontSetMouseIconEveryFrame then nil else PlayersService.LocalPlayer:GetMouse()
+local Mouse = if FFlagUserCameraToggleDontSetMouseIconEveryFrame then nil else LocalPlayer:GetMouse()
 
 --[[ Imports ]]
 local CameraUtils = if FFlagUserCameraToggleDontSetMouseIconEveryFrame
@@ -70,12 +74,12 @@ function MouseLockController.new()
 	end)
 
 	-- Watch for changes to DevEnableMouseLock and update the feature availability accordingly
-	PlayersService.LocalPlayer:GetPropertyChangedSignal("DevEnableMouseLock"):Connect(function()
+	LocalPlayer:GetPropertyChangedSignal("DevEnableMouseLock"):Connect(function()
 		self:UpdateMouseLockAvailability()
 	end)
 
 	-- Watch for changes to DevEnableMouseLock and update the feature availability accordingly
-	PlayersService.LocalPlayer:GetPropertyChangedSignal("DevComputerMovementMode"):Connect(function()
+	LocalPlayer:GetPropertyChangedSignal("DevComputerMovementMode"):Connect(function()
 		self:UpdateMouseLockAvailability()
 	end)
 
@@ -115,8 +119,8 @@ function MouseLockController:GetMouseLockOffset()
 end
 
 function MouseLockController:UpdateMouseLockAvailability()
-	local devAllowsMouseLock = PlayersService.LocalPlayer.DevEnableMouseLock
-	local devMovementModeIsScriptable = PlayersService.LocalPlayer.DevComputerMovementMode == Enum.DevComputerMovementMode.Scriptable
+	local devAllowsMouseLock = LocalPlayer.DevEnableMouseLock
+	local devMovementModeIsScriptable = LocalPlayer.DevComputerMovementMode == Enum.DevComputerMovementMode.Scriptable
 	local userHasMouseLockModeEnabled = GameSettings.ControlMode == Enum.ControlMode.MouseLockSwitch
 	local userHasClickToMoveEnabled =  GameSettings.ComputerMovementMode == Enum.ComputerMovementMode.ClickToMove
 	local MouseLockAvailable = devAllowsMouseLock and userHasMouseLockModeEnabled and not userHasClickToMoveEnabled and not devMovementModeIsScriptable

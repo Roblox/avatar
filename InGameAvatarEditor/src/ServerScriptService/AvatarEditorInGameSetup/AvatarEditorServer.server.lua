@@ -1,7 +1,9 @@
+--[[ Roblox Services ]]--
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local InsertService = game:GetService("InsertService")
-local Players = game:GetService("Players")
+local PlayersService = game:GetService("Players")
 
+--[[ Constants ]]--
 local AvatarEvents = Instance.new("Folder")
 AvatarEvents.Name = "AvatarEvents"
 
@@ -57,8 +59,8 @@ LoadAnimationServer.OnServerInvoke = function(player, assetId)
 end
 
 AvatarEditorClosed.OnServerEvent:Connect(function(player)
-	local characterInfo = Players:GetCharacterAppearanceInfoAsync(player.UserId)
-	local newHumanoidDescription = Players:GetHumanoidDescriptionFromUserId(player.UserId)
+	local characterInfo = PlayersService:GetCharacterAppearanceInfoAsync(player.UserId)
+	local newHumanoidDescription = PlayersService:GetHumanoidDescriptionFromUserId(player.UserId)
 
 	if player.Character then
 		local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
@@ -72,4 +74,3 @@ AvatarEditorClosed.OnServerEvent:Connect(function(player)
 		end
 	end
 end)
-

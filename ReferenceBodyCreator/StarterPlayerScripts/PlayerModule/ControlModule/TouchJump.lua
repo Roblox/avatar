@@ -5,8 +5,11 @@
 	// Description: Implements jump controls for touch devices. Use with Thumbstick and Thumbpad
 --]]
 
-local Players = game:GetService("Players")
+--[[ Roblox Services ]]--
+local PlayersService = game:GetService("Players")
 local GuiService = game:GetService("GuiService")
+
+local LocalPlayer = PlayersService.LocalPlayer
 
 --[[ Constants ]]--
 local TOUCH_CONTROL_SHEET = "rbxasset://textures/ui/Input/TouchControlsSheetV2.png"
@@ -39,7 +42,7 @@ function TouchJump:EnableButton(enable)
 		if not self.jumpButton then
 			self:Create()
 		end
-		local humanoid = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+		local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
 		if humanoid and self.externallyEnabled then
 			if self.externallyEnabled then
 				if humanoid.JumpPower > 0 then
@@ -63,7 +66,7 @@ function TouchJump:UpdateEnabled()
 end
 
 function TouchJump:HumanoidChanged(prop)
-	local humanoid = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+	local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
 		if prop == "JumpPower" then
 			self.jumpPower =  humanoid.JumpPower
@@ -119,11 +122,11 @@ function TouchJump:CharacterAdded(char)
 end
 
 function TouchJump:SetupCharacterAddedFunction()
-	self.characterAddedConn = Players.LocalPlayer.CharacterAdded:Connect(function(char)
+	self.characterAddedConn = LocalPlayer.CharacterAdded:Connect(function(char)
 		self:CharacterAdded(char)
 	end)
-	if Players.LocalPlayer.Character then
-		self:CharacterAdded(Players.LocalPlayer.Character)
+	if LocalPlayer.Character then
+		self:CharacterAdded(LocalPlayer.Character)
 	end
 end
 

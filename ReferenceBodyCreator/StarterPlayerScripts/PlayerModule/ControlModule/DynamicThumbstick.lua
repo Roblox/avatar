@@ -1,3 +1,17 @@
+--[[ Roblox Services ]]--
+local PlayersService = game:GetService("Players")
+local GuiService = game:GetService("GuiService")
+local UserInputService = game:GetService("UserInputService")
+local ContextActionService = game:GetService("ContextActionService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+
+local LocalPlayer = PlayersService.LocalPlayer
+if not LocalPlayer then
+	PlayersService:GetPropertyChangedSignal("LocalPlayer"):Wait()
+	LocalPlayer = PlayersService.LocalPlayer
+end
+
 --[[ Constants ]]--
 local ZERO_VECTOR3 = Vector3.new(0,0,0)
 local TOUCH_CONTROLS_SHEET = "rbxasset://textures/ui/Input/TouchControlsSheetV2.png"
@@ -22,19 +36,6 @@ local FADE_IN_OUT_MAX_ALPHA = 0.35
 local FADE_IN_OUT_HALF_DURATION_DEFAULT = 0.3
 local FADE_IN_OUT_BALANCE_DEFAULT = 0.5
 local ThumbstickFadeTweenInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
-
-local Players = game:GetService("Players")
-local GuiService = game:GetService("GuiService")
-local UserInputService = game:GetService("UserInputService")
-local ContextActionService = game:GetService("ContextActionService")
-local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
-
-local LocalPlayer = Players.LocalPlayer
-if not LocalPlayer then
-	Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
-	LocalPlayer = Players.LocalPlayer
-end
 
 --[[ The Module ]]--
 local BaseCharacterController = require(script.Parent:WaitForChild("BaseCharacterController"))
@@ -212,7 +213,6 @@ function DynamicThumbstick:DoMove(direction: Vector3)
 	self.moveVector = currentMoveVector
 end
 
-
 function DynamicThumbstick:LayoutMiddleImages(startPos: Vector3, endPos: Vector3)
 	local startDist = (self.thumbstickSize / 2) + self.middleSize
 	local vector = endPos - startPos
@@ -248,6 +248,7 @@ function DynamicThumbstick:MoveStick(pos)
 	local vector2StartPosition = Vector2.new(self.moveTouchStartPosition.X, self.moveTouchStartPosition.Y)
 	local startPos = vector2StartPosition - self.thumbstickFrame.AbsolutePosition
 	local endPos = Vector2.new(pos.X, pos.Y) - self.thumbstickFrame.AbsolutePosition
+
 	self.endImage.Position = UDim2.new(0, endPos.X, 0, endPos.Y)
 	self:LayoutMiddleImages(startPos, endPos)
 end
@@ -265,7 +266,11 @@ function DynamicThumbstick:BindContextActions()
 		if self.isFirstTouch then
 			self.isFirstTouch = false
 			local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out,0,false,0)
-			TweenService:Create(self.startImage, tweenInfo, {Size = UDim2.new(0, 0, 0, 0)}):Play()
+			TweenService:Create(
+				self.startImage, 
+				tweenInfo, 
+				{Size = UDim2.new(0, 0, 0, 0)}
+			):Play()
 			TweenService:Create(
 				self.endImage,
 				tweenInfo,

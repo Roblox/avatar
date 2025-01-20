@@ -1,4 +1,3 @@
-
 local function isMemeberOfEnum(enumItem, enum)
 	for _, testEnumItem in ipairs(enum:GetEnumItems()) do
 		if enumItem == testEnumItem then

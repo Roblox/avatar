@@ -1,6 +1,8 @@
+--[[ Roblox Services ]]--
 local StarterGui = game:GetService("StarterGui")
 local ServerScriptService = game:GetService("ServerScriptService")
 
+--[[ Constants ]]--
 local AvatarEditorSetup = script.Parent
 
 local function installServerScripts()

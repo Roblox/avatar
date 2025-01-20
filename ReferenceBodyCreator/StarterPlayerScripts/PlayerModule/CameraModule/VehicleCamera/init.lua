@@ -1,12 +1,8 @@
-local EPSILON = 1e-3
-local PITCH_LIMIT = math.rad(80)
-local YAW_DEFAULT = math.rad(0)
-local ZOOM_MINIMUM = 0.5
-local ZOOM_SENSITIVITY_CURVATURE = 0.5
-
-local Players = game:GetService("Players")
+--[[ Roblox Services ]]--
+local PlayersService = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
+--[[ Constants ]]--
 local BaseCamera = require(script.Parent:WaitForChild("BaseCamera"))
 local CameraInput = require(script.Parent:WaitForChild("CameraInput"))
 local CameraUtils = require(script.Parent:WaitForChild("CameraUtils"))
@@ -14,7 +10,13 @@ local ZoomController = require(script.Parent:WaitForChild("ZoomController"))
 local VehicleCameraCore = require(script:WaitForChild("VehicleCameraCore"))
 local VehicleCameraConfig = require(script:WaitForChild("VehicleCameraConfig"))
 
-local localPlayer = Players.LocalPlayer
+local EPSILON = 1e-3
+local PITCH_LIMIT = math.rad(80)
+local YAW_DEFAULT = math.rad(0)
+local ZOOM_MINIMUM = 0.5
+local ZOOM_SENSITIVITY_CURVATURE = 0.5
+
+local LocalPlayer = PlayersService.LocalPlayer
 
 local map = CameraUtils.map
 local Spring = CameraUtils.Spring
@@ -37,6 +39,7 @@ RunService.Stepped:Connect(function(_, _worldDt)
 	worldDt = _worldDt
 end)
 
+--[[ The Module ]]--
 local VehicleCamera = setmetatable({}, BaseCamera)
 VehicleCamera.__index = VehicleCamera
 
@@ -145,7 +148,7 @@ function VehicleCamera:_GetThirdPersonLocalOffset()
 end
 
 function VehicleCamera:_GetFirstPersonLocalOffset(subjectCFrame: CFrame)
-	local character = localPlayer.Character
+	local character = LocalPlayer.Character
 	
 	if character and character.Parent then
 		local head = character:FindFirstChild("Head")

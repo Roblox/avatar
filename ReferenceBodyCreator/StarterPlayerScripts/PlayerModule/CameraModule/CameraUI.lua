@@ -1,12 +1,14 @@
-local Players = game:GetService("Players")
+--[[ Roblox Services ]]--
+local PlayersService = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 
-local LocalPlayer = Players.LocalPlayer
+local LocalPlayer = PlayersService.LocalPlayer
 if not LocalPlayer then
-	Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
-	LocalPlayer = Players.LocalPlayer
+	PlayersService:GetPropertyChangedSignal("LocalPlayer"):Wait()
+	LocalPlayer = PlayersService.LocalPlayer
 end
 
+--[[ Constants ]]--
 local function waitForChildOfClass(parent: Instance, class: string)
 	local child = parent:FindFirstChildOfClass(class)
 	while not child or child.ClassName ~= class do

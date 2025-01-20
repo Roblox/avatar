@@ -1,4 +1,4 @@
-local Players = game:GetService("Players")
+local PlayersService = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local GuiService = game:GetService("GuiService")
 local LocalizationService = game:GetService("LocalizationService")
@@ -6,7 +6,7 @@ local BrowserService = game:GetService("BrowserService")
 local NotificationService = game:GetService("NotificationService")
 local RunService = game:GetService("RunService")
 
-local LocalPlayer = Players.LocalPlayer
+local LocalPlayer = PlayersService.LocalPlayer
 
 local PlayerGui = LocalPlayer.PlayerGui
 local AvatarEditorInGame = LocalPlayer.PlayerGui.AvatarEditorInGame

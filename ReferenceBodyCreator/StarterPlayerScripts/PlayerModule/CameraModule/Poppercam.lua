@@ -2,7 +2,7 @@
 	Poppercam - Occlusion module that brings the camera closer to the subject when objects are blocking the view.
 --]]
 
-local ZoomController =  require(script.Parent:WaitForChild("ZoomController"))
+local ZoomController = require(script.Parent:WaitForChild("ZoomController"))
 
 local TransformExtrapolator = {} do
 	TransformExtrapolator.__index = TransformExtrapolator

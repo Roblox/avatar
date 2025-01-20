@@ -3,7 +3,7 @@
 	2018 Camera Update - AllYourBlox		
 --]]
 
---[[ Top Level Roblox Services ]]--
+--[[ Roblox Services ]]--
 local PlayersService = game:GetService("Players")
 
 --[[ Constants ]]--
@@ -100,8 +100,6 @@ local function RayIntersection(p0: Vector3, v0: Vector3, p1: Vector3, v1: Vector
 		return ZERO_VECTOR3
 	end
 end
-
-
 
 --[[ The Module ]]--
 local BaseOcclusion = require(script.Parent:WaitForChild("BaseOcclusion"))

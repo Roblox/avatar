@@ -1,13 +1,15 @@
+--[[ Roblox Services ]]--
 local ContextActionService = game:GetService("ContextActionService")
 local UserInputService = game:GetService("UserInputService")
-local Players = game:GetService("Players")
+local PlayersService = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserGameSettings = UserSettings():GetService("UserGameSettings")
 local VRService = game:GetService("VRService")
 local StarterGui = game:GetService("StarterGui")
 
-local player = Players.LocalPlayer
+local Player = PlayersService.LocalPlayer
 
+--[[ Constants ]]--
 local CAMERA_INPUT_PRIORITY = Enum.ContextActionPriority.Default.Value
 local MB_TAP_LENGTH = 0.3 -- (s) length of time for a short mouse button tap to be registered
 
@@ -103,7 +105,7 @@ local function adjustTouchPitchSensitivity(delta: Vector2): Vector2
 end
 
 local function isInDynamicThumbstickArea(pos: Vector3): boolean
-	local playerGui = player:FindFirstChildOfClass("PlayerGui")
+	local playerGui = Player:FindFirstChildOfClass("PlayerGui")
 	local touchGui = playerGui and playerGui:FindFirstChild("TouchGui")
 	local touchFrame = touchGui and touchGui:FindFirstChild("TouchControlFrame")
 	local thumbstickFrame = touchFrame and touchFrame:FindFirstChild("DynamicThumbstickFrame")

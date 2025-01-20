@@ -3,26 +3,25 @@
 	2021 Roblox VR
 --]]
 
---[[ Local Constants ]]--
+--[[ Roblox Services ]]--
+local VRService = game:GetService("VRService")
+local PlayersService = game:GetService("Players")
+local Lighting = game:GetService("Lighting")
+local RunService = game:GetService("RunService")
+local UserGameSettings = UserSettings():GetService("UserGameSettings")
+
+local Player = PlayersService.LocalPlayer
+
+--[[ Constants ]]--
+local CameraInput = require(script.Parent:WaitForChild("CameraInput"))
+local ZoomController = require(script.Parent:WaitForChild("ZoomController"))
+
 local VR_ANGLE = math.rad(15)
 local VR_PANEL_SIZE = 512
 local VR_ZOOM = 7
 local VR_FADE_SPEED = 10 -- 1/10 second
 local VR_SCREEN_EGDE_BLEND_TIME = 0.14
 local VR_SEAT_OFFSET = Vector3.new(0,4,0)
-
-local VRService = game:GetService("VRService")
-
-local CameraInput = require(script.Parent:WaitForChild("CameraInput"))
-local ZoomController = require(script.Parent:WaitForChild("ZoomController"))
-
-local Players = game:GetService("Players")
-local player = Players.LocalPlayer
-
-local Lighting = game:GetService("Lighting")
-local RunService = game:GetService("RunService")
-
-local UserGameSettings = UserSettings():GetService("UserGameSettings")
 
 --[[ The Module ]]--
 local BaseCamera = require(script.Parent:WaitForChild("BaseCamera"))
@@ -48,8 +47,8 @@ function VRBaseCamera.new()
 
 	-- distance is different in VR
 	self.defaultDistance = VR_ZOOM
-	self.defaultSubjectDistance = math.clamp(self.defaultDistance, player.CameraMinZoomDistance, player.CameraMaxZoomDistance)
-	self.currentSubjectDistance = math.clamp(self.defaultDistance, player.CameraMinZoomDistance, player.CameraMaxZoomDistance)
+	self.defaultSubjectDistance = math.clamp(self.defaultDistance, Player.CameraMinZoomDistance, Player.CameraMaxZoomDistance)
+	self.currentSubjectDistance = math.clamp(self.defaultDistance, Player.CameraMinZoomDistance, Player.CameraMaxZoomDistance)
 
 	-- VR screen effect
 	self.VRFadeResetTimer = 0
@@ -108,7 +107,7 @@ function VRBaseCamera:OnEnable(enable: boolean)
 
 		-- reset VR effects
 		self.VREdgeBlurTimer = 0
-		self:UpdateEdgeBlur(player, 1)
+		self:UpdateEdgeBlur(Player, 1)
 		local VRFade = Lighting:FindFirstChild("VRFade")
 		if VRFade then
 			VRFade.Brightness = 0
@@ -117,7 +116,7 @@ function VRBaseCamera:OnEnable(enable: boolean)
 end
 
 function VRBaseCamera:UpdateDefaultSubjectDistance()
-	self.defaultSubjectDistance = math.clamp(VR_ZOOM, player.CameraMinZoomDistance, player.CameraMaxZoomDistance)
+	self.defaultSubjectDistance = math.clamp(VR_ZOOM, Player.CameraMinZoomDistance, Player.CameraMaxZoomDistance)
 end
 
 -- Nominal distance, set by dollying in and out with the mouse wheel or equivalent, not measured distance
@@ -129,7 +128,7 @@ end
 function VRBaseCamera:SetCameraToSubjectDistance(desiredSubjectDistance: number): number
 	local lastSubjectDistance = self.currentSubjectDistance
 
-	local newSubjectDistance = math.clamp(desiredSubjectDistance, 0, player.CameraMaxZoomDistance)
+	local newSubjectDistance = math.clamp(desiredSubjectDistance, 0, Player.CameraMaxZoomDistance)
 	if newSubjectDistance < 1.0 then
 		self.currentSubjectDistance = 0.5
 		if not self.inFirstPerson then
@@ -156,11 +155,14 @@ function VRBaseCamera:GetVRFocus(subjectPosition, timeDelta)
 	self.cameraTranslationConstraints = Vector3.new(
 		self.cameraTranslationConstraints.x,
 		math.min(1, self.cameraTranslationConstraints.y + timeDelta),
-		self.cameraTranslationConstraints.z)
+		self.cameraTranslationConstraints.z
+	)
 
 	local cameraHeightDelta = Vector3.new(0, self:GetCameraHeight(), 0)
-	local newFocus = CFrame.new(Vector3.new(subjectPosition.x, lastFocus.y, subjectPosition.z):
-			lerp(subjectPosition + cameraHeightDelta, self.cameraTranslationConstraints.y))
+	local newFocus = CFrame.new(
+		Vector3.new(subjectPosition.x, lastFocus.y, subjectPosition.z):
+		lerp(subjectPosition + cameraHeightDelta, self.cameraTranslationConstraints.y)
+	)
 
 	return newFocus
 end
@@ -199,7 +201,8 @@ function VRBaseCamera:UpdateFadeFromBlack(timeDelta: number)
 	end
 end
 
-function VRBaseCamera:StartVREdgeBlur(player)
+function VRBaseCamera:StartVREdgeBlur(Player)
+	local PlayerGui = Player.PlayerGui
 	if FFlagUserVRVignetteToggle then
 		if UserGameSettings.VignetteEnabled == false then
 			return
@@ -230,7 +233,7 @@ function VRBaseCamera:StartVREdgeBlur(player)
 	end
 
 	
-	local VRScreen = player.PlayerGui:FindFirstChild("VRBlurScreen")
+	local VRScreen = PlayerGui:FindFirstChild("VRBlurScreen")
 	local VRBlur = nil
 	if VRScreen then
 		VRBlur = VRScreen:FindFirstChild("VRBlur")
@@ -242,7 +245,7 @@ function VRBaseCamera:StartVREdgeBlur(player)
 		end
 		
 		VRScreen.Name = "VRBlurScreen"
-		VRScreen.Parent = player.PlayerGui
+		VRScreen.Parent = PlayerGui
 		
 		if FFlagUserFlagEnableVRUpdate2 then
 			VRScreen.Adornee = blurPart
@@ -272,8 +275,9 @@ function VRBaseCamera:StartVREdgeBlur(player)
 	self.VREdgeBlurTimer = VR_SCREEN_EGDE_BLEND_TIME
 end
 
-function VRBaseCamera:UpdateEdgeBlur(player, timeDelta)
-	local VRScreen = player.PlayerGui:FindFirstChild("VRBlurScreen")
+function VRBaseCamera:UpdateEdgeBlur(Player, timeDelta)
+	local PlayerGui = Player.PlayerGui
+	local VRScreen = PlayerGui:FindFirstChild("VRBlurScreen")
 	local VRBlur = nil
 	if VRScreen then
 		VRBlur = VRScreen:FindFirstChild("VRBlur")
@@ -283,7 +287,7 @@ function VRBaseCamera:UpdateEdgeBlur(player, timeDelta)
 		if self.VREdgeBlurTimer > 0 then
 			self.VREdgeBlurTimer = self.VREdgeBlurTimer - timeDelta
 
-			local VRScreen = player.PlayerGui:FindFirstChild("VRBlurScreen")
+			local VRScreen = PlayerGui:FindFirstChild("VRBlurScreen")
 			if VRScreen then
 				local VRBlur = VRScreen:FindFirstChild("VRBlur")
 				if VRBlur then
@@ -356,7 +360,5 @@ function VRBaseCamera:GetSubjectPosition(): Vector3
 
 	return result
 end
-
------------------------------
 
 return VRBaseCamera

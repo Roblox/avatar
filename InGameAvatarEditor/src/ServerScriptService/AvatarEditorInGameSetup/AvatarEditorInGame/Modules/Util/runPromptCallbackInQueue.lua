@@ -1,4 +1,3 @@
-
 local queue = {}
 local callbackRunning = false
 

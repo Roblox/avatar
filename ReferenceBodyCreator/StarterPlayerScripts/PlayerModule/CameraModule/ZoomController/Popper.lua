@@ -3,10 +3,11 @@
 -- Prevents your camera from clipping through walls.
 --------------------------------------------------------------------------------
 
-local Players = game:GetService("Players")
-
+--[[ Roblox Services ]]--
+local PlayersService = game:GetService("Players")
 local camera = game.Workspace.CurrentCamera
 
+--[[ Otimization ]]
 local min = math.min
 local tan = math.tan
 local rad = math.rad
@@ -78,10 +79,10 @@ local blacklist = {} do
 		refreshIgnoreList()
 	end
 
-	Players.PlayerAdded:Connect(playerAdded)
-	Players.PlayerRemoving:Connect(playerRemoving)
+	PlayersService.PlayerAdded:Connect(playerAdded)
+	PlayersService.PlayerRemoving:Connect(playerRemoving)
 
-	for _, player in ipairs(Players:GetPlayers()) do
+	for _, player in ipairs(PlayersService:GetPlayers()) do
 		playerAdded(player)
 	end
 	refreshIgnoreList()

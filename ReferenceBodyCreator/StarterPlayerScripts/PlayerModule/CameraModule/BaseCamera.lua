@@ -3,7 +3,22 @@
 	2018 Camera Update - AllYourBlox
 --]]
 
+--[[ Roblox Services ]]--
+local PlayersService = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local StarterGui = game:GetService("StarterGui")
+local VRService = game:GetService("VRService")
+local UserGameSettings = UserSettings():GetService("UserGameSettings")
+
+local Player = PlayersService.LocalPlayer
+
 --[[ Local Constants ]]--
+local CameraUtils = require(script.Parent:WaitForChild("CameraUtils"))
+local ZoomController = require(script.Parent:WaitForChild("ZoomController"))
+local CameraToggleStateController = require(script.Parent:WaitForChild("CameraToggleStateController"))
+local CameraInput = require(script.Parent:WaitForChild("CameraInput"))
+local CameraUI = require(script.Parent:WaitForChild("CameraUI"))
+
 local UNIT_Z = Vector3.new(0,0,1)
 local X1_Y0_Z1 = Vector3.new(1,0,1)	--Note: not a unit vector, used for projecting onto XZ plane
 
@@ -38,21 +53,6 @@ local GAMEPAD_ZOOM_STEP_3 = 20
 
 local ZOOM_SENSITIVITY_CURVATURE = 0.5
 local FIRST_PERSON_DISTANCE_MIN = 0.5
-
-local CameraUtils = require(script.Parent:WaitForChild("CameraUtils"))
-local ZoomController = require(script.Parent:WaitForChild("ZoomController"))
-local CameraToggleStateController = require(script.Parent:WaitForChild("CameraToggleStateController"))
-local CameraInput = require(script.Parent:WaitForChild("CameraInput"))
-local CameraUI = require(script.Parent:WaitForChild("CameraUI"))
-
---[[ Roblox Services ]]--
-local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local StarterGui = game:GetService("StarterGui")
-local VRService = game:GetService("VRService")
-local UserGameSettings = UserSettings():GetService("UserGameSettings")
-
-local player = Players.LocalPlayer
 
 local FFlagUserFlagEnableNewVRSystem do
 	local success, result = pcall(function()
@@ -97,8 +97,8 @@ function BaseCamera.new()
 	-- is trying to maintain, not the actual measured value.
 	-- The default is updated when screen orientation or the min/max distances change,
 	-- to be sure the default is always in range and appropriate for the orientation.
-	self.defaultSubjectDistance = math.clamp(DEFAULT_DISTANCE, player.CameraMinZoomDistance, player.CameraMaxZoomDistance)
-	self.currentSubjectDistance = math.clamp(DEFAULT_DISTANCE, player.CameraMinZoomDistance, player.CameraMaxZoomDistance)
+	self.defaultSubjectDistance = math.clamp(DEFAULT_DISTANCE, Player.CameraMinZoomDistance, Player.CameraMaxZoomDistance)
+	self.currentSubjectDistance = math.clamp(DEFAULT_DISTANCE, Player.CameraMinZoomDistance, Player.CameraMaxZoomDistance)
 
 	self.inFirstPerson = false
 	self.inMouseLockedMode = false
@@ -137,11 +137,11 @@ function BaseCamera.new()
 	-- Initialization things used to always execute at game load time, but now these camera modules are instantiated
 	-- when needed, so the code here may run well after the start of the game
 
-	if player.Character then
-		self:OnCharacterAdded(player.Character)
+	if Player.Character then
+		self:OnCharacterAdded(Player.Character)
 	end
 
-	player.CharacterAdded:Connect(function(char)
+	Player.CharacterAdded:Connect(function(char)
 		self:OnCharacterAdded(char)
 	end)
 
@@ -152,22 +152,22 @@ function BaseCamera.new()
 	self:OnCurrentCameraChanged()
 
 	if self.playerCameraModeChangeConn then self.playerCameraModeChangeConn:Disconnect() end
-	self.playerCameraModeChangeConn = player:GetPropertyChangedSignal("CameraMode"):Connect(function()
+	self.playerCameraModeChangeConn = Player:GetPropertyChangedSignal("CameraMode"):Connect(function()
 		self:OnPlayerCameraPropertyChange()
 	end)
 
 	if self.minDistanceChangeConn then self.minDistanceChangeConn:Disconnect() end
-	self.minDistanceChangeConn = player:GetPropertyChangedSignal("CameraMinZoomDistance"):Connect(function()
+	self.minDistanceChangeConn = Player:GetPropertyChangedSignal("CameraMinZoomDistance"):Connect(function()
 		self:OnPlayerCameraPropertyChange()
 	end)
 
 	if self.maxDistanceChangeConn then self.maxDistanceChangeConn:Disconnect() end
-	self.maxDistanceChangeConn = player:GetPropertyChangedSignal("CameraMaxZoomDistance"):Connect(function()
+	self.maxDistanceChangeConn = Player:GetPropertyChangedSignal("CameraMaxZoomDistance"):Connect(function()
 		self:OnPlayerCameraPropertyChange()
 	end)
 
 	if self.playerDevTouchMoveModeChangeConn then self.playerDevTouchMoveModeChangeConn:Disconnect() end
-	self.playerDevTouchMoveModeChangeConn = player:GetPropertyChangedSignal("DevTouchMovementMode"):Connect(function()
+	self.playerDevTouchMoveModeChangeConn = Player:GetPropertyChangedSignal("DevTouchMovementMode"):Connect(function()
 		self:OnDevTouchMovementModeChanged()
 	end)
 	self:OnDevTouchMovementModeChanged() -- Init
@@ -203,7 +203,7 @@ function BaseCamera:OnCharacterAdded(char)
 	self.resetCameraAngle = self.resetCameraAngle or self:GetEnabled()
 	self.humanoidRootPart = nil
 	if UserInputService.TouchEnabled then
-		self.PlayerGui = player:WaitForChild("PlayerGui")
+		self.PlayerGui = Player:WaitForChild("PlayerGui")
 		for _, child in ipairs(char:GetChildren()) do
 			if child:IsA("Tool") then
 				self.isAToolEquipped = true
@@ -224,8 +224,8 @@ end
 
 function BaseCamera:GetHumanoidRootPart(): BasePart
 	if not self.humanoidRootPart then
-		if player.Character then
-			local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+		if Player.Character then
+			local humanoid = Player.Character:FindFirstChildOfClass("Humanoid")
 			if humanoid then
 				self.humanoidRootPart = humanoid.RootPart
 			end
@@ -478,15 +478,16 @@ end
 
 function BaseCamera:UpdateDefaultSubjectDistance()
 	if self.portraitMode then
-		self.defaultSubjectDistance = math.clamp(PORTRAIT_DEFAULT_DISTANCE, player.CameraMinZoomDistance, player.CameraMaxZoomDistance)
+		self.defaultSubjectDistance = math.clamp(PORTRAIT_DEFAULT_DISTANCE, Player.CameraMinZoomDistance, Player.CameraMaxZoomDistance)
 	else
-		self.defaultSubjectDistance = math.clamp(DEFAULT_DISTANCE, player.CameraMinZoomDistance, player.CameraMaxZoomDistance)
+		self.defaultSubjectDistance = math.clamp(DEFAULT_DISTANCE, Player.CameraMinZoomDistance, Player.CameraMaxZoomDistance)
 	end
 end
 
 function BaseCamera:OnViewportSizeChanged()
 	local camera = game.Workspace.CurrentCamera
 	local size = camera.ViewportSize
+
 	self.portraitMode = size.X < size.Y
 	self.isSmallTouchScreen = UserInputService.TouchEnabled and (size.Y < 500 or size.X < 700)
 
@@ -537,7 +538,7 @@ function BaseCamera:OnDynamicThumbstickDisabled()
 end
 
 function BaseCamera:OnGameSettingsTouchMovementModeChanged()
-	if player.DevTouchMovementMode == Enum.DevTouchMovementMode.UserChoice then
+	if Player.DevTouchMovementMode == Enum.DevTouchMovementMode.UserChoice then
 		if (UserGameSettings.TouchMovementMode == Enum.TouchMovementMode.DynamicThumbstick
 			or UserGameSettings.TouchMovementMode == Enum.TouchMovementMode.Default) then
 			self:OnDynamicThumbstickEnabled()
@@ -548,7 +549,7 @@ function BaseCamera:OnGameSettingsTouchMovementModeChanged()
 end
 
 function BaseCamera:OnDevTouchMovementModeChanged()
-	if player.DevTouchMovementMode == Enum.DevTouchMovementMode.DynamicThumbstick then
+	if Player.DevTouchMovementMode == Enum.DevTouchMovementMode.DynamicThumbstick then
 		self:OnDynamicThumbstickEnabled()
 	else
 		self:OnGameSettingsTouchMovementModeChanged()
@@ -556,7 +557,7 @@ function BaseCamera:OnDevTouchMovementModeChanged()
 end
 
 function BaseCamera:OnPlayerCameraPropertyChange()
-	-- This call forces re-evaluation of player.CameraMode and clamping to min/max distance which may have changed
+	-- This call forces re-evaluation of Player.CameraMode and clamping to min/max distance which may have changed
 	self:SetCameraToSubjectDistance(self.currentSubjectDistance)
 end
 
@@ -586,7 +587,7 @@ function BaseCamera:Enable(enable: boolean)
 				self:GamepadZoomPress()
 			end)
 
-			if player.CameraMode == Enum.CameraMode.LockFirstPerson then
+			if Player.CameraMode == Enum.CameraMode.LockFirstPerson then
 				self.currentSubjectDistance = 0.5
 				if not self.inFirstPerson then
 					self:EnterFirstPerson()
@@ -683,13 +684,13 @@ function BaseCamera:SetCameraToSubjectDistance(desiredSubjectDistance: number): 
 	-- regardless of what Player.CameraMinZoomDistance is set to, so that first person can be made
 	-- available by the developer without needing to allow players to mousewheel dolly into first person.
 	-- Some modules will override this function to remove or change first-person capability.
-	if player.CameraMode == Enum.CameraMode.LockFirstPerson then
+	if Player.CameraMode == Enum.CameraMode.LockFirstPerson then
 		self.currentSubjectDistance = 0.5
 		if not self.inFirstPerson then
 			self:EnterFirstPerson()
 		end
 	else
-		local newSubjectDistance = math.clamp(desiredSubjectDistance, player.CameraMinZoomDistance, player.CameraMaxZoomDistance)
+		local newSubjectDistance = math.clamp(desiredSubjectDistance, Player.CameraMinZoomDistance, Player.CameraMaxZoomDistance)
 		if newSubjectDistance < FIRST_PERSON_DISTANCE_THRESHOLD then
 			self.currentSubjectDistance = 0.5
 			if not self.inFirstPerson then
@@ -802,16 +803,16 @@ function BaseCamera:CalculateNewLookVectorVRFromArg(rotateInput: Vector2): Vecto
 end
 
 function BaseCamera:GetHumanoid(): Humanoid?
-	local character = player and player.Character
+	local character = Player and Player.Character
 	if character then
-		local resultHumanoid = self.humanoidCache[player]
+		local resultHumanoid = self.humanoidCache[Player]
 		if resultHumanoid and resultHumanoid.Parent == character then
 			return resultHumanoid
 		else
-			self.humanoidCache[player] = nil -- Bust Old Cache
+			self.humanoidCache[Player] = nil -- Bust Old Cache
 			local humanoid = character:FindFirstChildOfClass("Humanoid")
 			if humanoid then
-				self.humanoidCache[player] = humanoid
+				self.humanoidCache[Player] = humanoid
 			end
 			return humanoid
 		end
@@ -831,7 +832,6 @@ function BaseCamera:GetHumanoidPartToFollow(humanoid: Humanoid, humanoidStateTyp
 		return humanoid.Torso
 	end
 end
-
 
 function BaseCamera:OnNewCameraSubject()
 	if self.subjectStateChangedConn then
@@ -917,7 +917,6 @@ if not FFlagUserFlagEnableNewVRSystem then
 		end
 	end
 
-
 	function BaseCamera:ShouldUseVRRotation()
 		if not VRService.VREnabled then
 			return false
@@ -969,7 +968,6 @@ if not FFlagUserFlagEnableNewVRSystem then
 
 		return vrRotateSum
 	end
-
 
 	function BaseCamera:GetVRFocus(subjectPosition, timeDelta)
 		local lastFocus = self.LastCameraFocus or subjectPosition

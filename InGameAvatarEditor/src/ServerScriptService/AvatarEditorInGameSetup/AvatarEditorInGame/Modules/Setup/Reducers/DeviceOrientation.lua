@@ -2,7 +2,6 @@ local InGameSetup = script.Parent.Parent
 local Modules = InGameSetup.Parent
 
 local DeviceOrientationMode = require(Modules.NotLApp.DeviceOrientationMode)
-
 local SetDeviceOrientation = require(Modules.Setup.Actions.SetDeviceOrientation)
 
 return function(state, action)

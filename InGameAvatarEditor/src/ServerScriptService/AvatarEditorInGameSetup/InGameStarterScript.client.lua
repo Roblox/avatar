@@ -1,9 +1,12 @@
-local Players = game:GetService("Players")
+--[[ Roblox Services ]]--
+local PlayersService = game:GetService("Players")
 
-local LocalPlayer = Players.LocalPlayer
+local LocalPlayer = PlayersService.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
+--[[ Constants ]]--
 script.Parent.ShowAndLeave.Enabled = true
+
 local showButton = script.Parent.ShowAndLeave.EditAvatarButton
 local leaveButton = script.Parent.ShowAndLeave.LeaveButton
 

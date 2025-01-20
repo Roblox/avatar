@@ -1,5 +1,3 @@
-
-
 local PathDisplay = {}
 PathDisplay.spacing = 8
 PathDisplay.image = "rbxasset://textures/Cursors/Gamepad/Pointer.png"

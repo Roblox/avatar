@@ -3,9 +3,11 @@
 	2021 Roblox VR
 --]]
 
---[[ Services ]]--
+--[[ Roblox Services ]]--
 local PlayersService = game:GetService("Players")
 local VRService = game:GetService("VRService")
+
+local LocalPlayer = PlayersService.LocalPlayer
 
 -- Local private variables and constants
 local CAMERA_BLACKOUT_TIME = 0.1
@@ -43,7 +45,7 @@ function VRCamera:Update(timeDelta)
 	local newCameraCFrame = camera.CFrame
 	local newCameraFocus = camera.Focus
 
-	local player = PlayersService.LocalPlayer
+	local player = LocalPlayer
 	local humanoid = self:GetHumanoid()
 	local cameraSubject = camera.CameraSubject
 
@@ -103,7 +105,7 @@ function VRCamera:UpdateFirstPersonTransform(timeDelta, newCameraCFrame, newCame
 	end
 
 	-- blur screen edge during movement
-	local player = PlayersService.LocalPlayer
+	local player = LocalPlayer
 	local subjectDelta = lastSubjPos - subjectPosition
 	if subjectDelta.magnitude > 0.01 then
 		self:StartVREdgeBlur(player)
@@ -143,7 +145,7 @@ function VRCamera:UpdateThirdPersonTransform(timeDelta, newCameraCFrame, newCame
 
 	if lastSubjPos ~= nil and self.lastCameraFocus ~= nil then
 		-- compute delta of subject since last update
-		local player = PlayersService.LocalPlayer
+		local player = LocalPlayer
 		local subjectDelta = lastSubjPos - subjectPosition
 		local moveVector = require(player:WaitForChild("PlayerScripts").PlayerModule:WaitForChild("ControlModule")):GetMoveVector()
 

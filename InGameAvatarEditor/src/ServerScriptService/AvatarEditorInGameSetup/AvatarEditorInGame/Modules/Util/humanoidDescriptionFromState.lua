@@ -1,6 +1,4 @@
-local Players = game:GetService("Players")
-
-local Modules = Players.LocalPlayer.PlayerGui.AvatarEditorInGame.Modules
+local Modules = game:GetService("Players").LocalPlayer.PlayerGui.AvatarEditorInGame.Modules
 local AvatarExperienceConstants = require(Modules.AvatarExperience.Common.Constants)
 local CatalogConstants = require(Modules.AvatarExperience.Catalog.CatalogConstants)
 

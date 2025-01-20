@@ -3,16 +3,20 @@
 	TouchThumbstick
 	
 --]]
-local Players = game:GetService("Players")
+
+--[[ Roblox Services ]]--
 local GuiService = game:GetService("GuiService")
 local UserInputService = game:GetService("UserInputService")
+
 --[[ Constants ]]--
 local ZERO_VECTOR3 = Vector3.new(0,0,0)
 local TOUCH_CONTROL_SHEET = "rbxasset://textures/ui/TouchControlsSheet.png"
+
 --[[ The Module ]]--
 local BaseCharacterController = require(script.Parent:WaitForChild("BaseCharacterController"))
 local TouchThumbstick = setmetatable({}, BaseCharacterController)
 TouchThumbstick.__index = TouchThumbstick
+
 function TouchThumbstick.new()
 	local self = setmetatable(BaseCharacterController.new(), TouchThumbstick)
 	
@@ -28,6 +32,7 @@ function TouchThumbstick.new()
 	
 	return self
 end
+
 function TouchThumbstick:Enable(enable: boolean?, uiParentFrame)
 	if enable == nil then return false end			-- If nil, return false (invalid argument)
 	enable = enable and true or false				-- Force anything non-nil to boolean before comparison
@@ -49,6 +54,7 @@ function TouchThumbstick:Enable(enable: boolean?, uiParentFrame)
 	end
 	self.enabled = enable
 end
+
 function TouchThumbstick:OnInputEnded()
 	self.thumbstickFrame.Position = self.screenPos
 	self.stickImage.Position = UDim2.new(0, self.thumbstickFrame.Size.X.Offset/2 - self.thumbstickSize/4, 0, self.thumbstickFrame.Size.Y.Offset/2 - self.thumbstickSize/4)
@@ -58,6 +64,7 @@ function TouchThumbstick:OnInputEnded()
 	self.thumbstickFrame.Position = self.screenPos
 	self.moveTouchObject = nil
 end
+
 function TouchThumbstick:Create(parentFrame)
 	
 	if self.thumbstickFrame then
@@ -75,10 +82,13 @@ function TouchThumbstick:Create(parentFrame)
 	
 	local minAxis = math.min(parentFrame.AbsoluteSize.x, parentFrame.AbsoluteSize.y)
 	local isSmallScreen = minAxis <= 500
+
 	self.thumbstickSize = isSmallScreen and 70 or 120
-	self.screenPos = isSmallScreen and UDim2.new(0, (self.thumbstickSize/2) - 10, 1, -self.thumbstickSize - 20) or
-		UDim2.new(0, self.thumbstickSize/2, 1, -self.thumbstickSize * 1.75)
-		
+	self.screenPos = isSmallScreen and UDim2.new(
+		0, (self.thumbstickSize/2) - 10, 1, -self.thumbstickSize - 20) or
+		UDim2.new(0, self.thumbstickSize/2, 1, -self.thumbstickSize * 1.75
+	)
+	
 	self.thumbstickFrame = Instance.new("Frame")
 	self.thumbstickFrame.Name = "ThumbstickFrame"
 	self.thumbstickFrame.Active = true
@@ -112,7 +122,6 @@ function TouchThumbstick:Create(parentFrame)
 	local deadZone = 0.05
 	
 	local function DoMove(direction: Vector2)
-		
 		local currentMoveVector = direction / (self.thumbstickSize/2)
 		
 		-- Scaled Radial Dead Zone
@@ -185,4 +194,5 @@ function TouchThumbstick:Create(parentFrame)
 	
 	self.thumbstickFrame.Parent = parentFrame
 end
+
 return TouchThumbstick

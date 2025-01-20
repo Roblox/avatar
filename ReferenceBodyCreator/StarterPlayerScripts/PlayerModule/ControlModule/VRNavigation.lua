@@ -4,17 +4,17 @@
 		VRNavigation
 --]]
 
+--[[ Roblox Services ]]--
 local VRService = game:GetService("VRService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-local Players = game:GetService("Players")
+local PlayersService = game:GetService("Players")
 local PathfindingService = game:GetService("PathfindingService")
 local ContextActionService = game:GetService("ContextActionService")
 local StarterGui = game:GetService("StarterGui")
 
---local MasterControl = require(script.Parent)
 local PathDisplay = nil
-local LocalPlayer = Players.LocalPlayer
+local LocalPlayer = PlayersService.LocalPlayer
 
 --[[ Constants ]]--
 local RECALCULATE_PATH_THRESHOLD = 4
@@ -46,7 +46,6 @@ coroutine.wrap(function()
 		PathDisplay = require(PathDisplayModule)
 	end
 end)()
-
 
 --[[ The Class ]]--
 local BaseCharacterController = require(script.Parent:WaitForChild("BaseCharacterController"))
@@ -133,8 +132,6 @@ function VRNavigation:ShouldUseNavigationLaser()
 		return true
 	end
 end
-
-
 
 function VRNavigation:StartFollowingPath(newPath)
 	currentPath = newPath
@@ -260,8 +257,7 @@ function VRNavigation:BindJumpAction(active)
 	if active then
 		if not self.isJumpBound then
 			self.isJumpBound = true
-			ContextActionService:BindActionAtPriority("VRJumpAction", (function() return self:OnJumpAction() end), false,
-				self.CONTROL_ACTION_PRIORITY, Enum.KeyCode.ButtonA)
+			ContextActionService:BindActionAtPriority("VRJumpAction", (function() return self:OnJumpAction() end), false, self.CONTROL_ACTION_PRIORITY, Enum.KeyCode.ButtonA)
 		end
 	else
 		if self.isJumpBound then
@@ -361,7 +357,7 @@ function VRNavigation:OnHeartbeat(dt)
 			end
 		else
 			local ignoreTable = {
-				game.Players.LocalPlayer.Character,
+				game.PlayersService.LocalPlayer.Character,
 				workspace.CurrentCamera
 			}
 			local obstructRay = Ray.new(currentPosition - Vector3.new(0, 1, 0), moveDir * 3)
@@ -417,8 +413,7 @@ function VRNavigation:Enable(enable)
 		self.navigationRequestedConn = VRService.NavigationRequested:Connect(function(destinationCFrame, inputUserCFrame) self:OnNavigationRequest(destinationCFrame, inputUserCFrame) end)
 		self.heartbeatConn = RunService.Heartbeat:Connect(function(dt) self:OnHeartbeat(dt) end)
 
-		ContextActionService:BindAction("MoveThumbstick", (function(actionName, inputState, inputObject) return self:ControlCharacterGamepad(actionName, inputState, inputObject) end),
-			false, self.CONTROL_ACTION_PRIORITY, Enum.KeyCode.Thumbstick1)
+		ContextActionService:BindAction("MoveThumbstick", (function(actionName, inputState, inputObject) return self:ControlCharacterGamepad(actionName, inputState, inputObject) end), false, self.CONTROL_ACTION_PRIORITY, Enum.KeyCode.Thumbstick1)
 		ContextActionService:BindActivate(Enum.UserInputType.Gamepad1, Enum.KeyCode.ButtonR2)
 
 		self.userCFrameEnabledConn = VRService.UserCFrameEnabled:Connect(function() self:OnUserCFrameEnabled() end)

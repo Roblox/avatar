@@ -3,9 +3,18 @@
 	2021 Roblox VR
 --]]
 
+--[[ Optimizations functions ]]--
+local MAbs, MMax, MRad = math.abs, math.max, math.rad
+
+--[[ Roblox Services ]]--
+local PlayersService = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local VRService = game:GetService("VRService")
+
+--[[ Constants ]]--
 local EPSILON = 1e-3
-local PITCH_LIMIT = math.rad(80)
-local YAW_DEFAULT = math.rad(0)
+local PITCH_LIMIT = MRad(80)
+local YAW_DEFAULT = MRad(0)
 local ZOOM_MINIMUM = 0.5
 local ZOOM_SENSITIVITY_CURVATURE = 0.5
 local DEFAULT_CAMERA_DIST = 16
@@ -19,11 +28,8 @@ local ZoomController = require(script.Parent:WaitForChild("ZoomController"))
 local VehicleCamera = require(script.Parent:WaitForChild("VehicleCamera"))
 local VehicleCameraCore =  require(script.Parent.VehicleCamera:FindFirstChild("VehicleCameraCore"))
 local VehicleCameraConfig = require(script.Parent.VehicleCamera:FindFirstChild("VehicleCameraConfig"))
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local VRService = game:GetService("VRService")
 
-local localPlayer = Players.LocalPlayer
+local LocalPlayer = PlayersService.LocalPlayer
 local Spring = CameraUtils.Spring
 local mapClamp = CameraUtils.mapClamp
 local sanitizeAngle = CameraUtils.sanitizeAngle
@@ -32,14 +38,15 @@ local ZERO_VECTOR3 = Vector3.new(0,0,0)
 
 -- pitch-axis rotational velocity of a part with a given CFrame and total RotVelocity
 local function pitchVelocity(rotVel, cf)
-	return math.abs(cf.XVector:Dot(rotVel))
+	return MAbs(cf.XVector:Dot(rotVel))
 end
 
 -- yaw-axis rotational velocity of a part with a given CFrame and total RotVelocity
 local function yawVelocity(rotVel, cf)
-	return math.abs(cf.YVector:Dot(rotVel))
+	return MAbs(cf.YVector:Dot(rotVel))
 end
 
+--[[ The Module ]]--
 local worldDt = 1/60
 local VRVehicleCamera = setmetatable({}, VRBaseCamera)
 VRVehicleCamera.__index = VRVehicleCamera
@@ -58,7 +65,7 @@ end
 
 function VRVehicleCamera:Reset()
 	self.vehicleCameraCore = VehicleCameraCore.new(self:GetSubjectCFrame())
-	self.pitchSpring = Spring.new(0, -math.rad(VehicleCameraConfig.pitchBaseAngle))
+	self.pitchSpring = Spring.new(0, -MRad(VehicleCameraConfig.pitchBaseAngle))
 	self.yawSpring = Spring.new(0, YAW_DEFAULT)
 
 	local camera = workspace.CurrentCamera
@@ -71,7 +78,7 @@ function VRVehicleCamera:Reset()
 	local assemblyParts = cameraSubject:GetConnectedParts(true) -- passing true to recursively get all assembly parts
 	local assemblyPosition, assemblyRadius = CameraUtils.getLooseBoundingSphere(assemblyParts)
 
-	assemblyRadius = math.max(assemblyRadius, EPSILON)
+	assemblyRadius = MMax(assemblyRadius, EPSILON)
 
 	self.assemblyRadius = assemblyRadius
 	self.assemblyOffset = cameraSubject.CFrame:Inverse()*assemblyPosition -- seat-space offset of the assembly bounding sphere center
@@ -82,7 +89,7 @@ function VRVehicleCamera:Reset()
 end
 
 function VRVehicleCamera:_StepInitialZoom()
-	self:SetCameraToSubjectDistance(math.max(
+	self:SetCameraToSubjectDistance(MMax(
 		ZoomController.GetZoomRadius(),
 		self.assemblyRadius*VehicleCameraConfig.initialZoomRadiusMul
 	))
@@ -93,7 +100,7 @@ function VRVehicleCamera:_GetThirdPersonLocalOffset()
 end
 
 function VRVehicleCamera:_GetFirstPersonLocalOffset(subjectCFrame: CFrame)
-	local character = localPlayer.Character
+	local character = LocalPlayer.Character
 
 	if character and character.Parent then
 		local head = character:FindFirstChild("Head")
@@ -125,7 +132,7 @@ function VRVehicleCamera:Update()
 	local subjectRotVel = self:GetSubjectRotVelocity()
 
 	-- measure the local-to-world-space forward velocity of the vehicle
-	local vDotZ = math.abs(subjectVel:Dot(subjectCFrame.ZVector))
+	local vDotZ = MAbs(subjectVel:Dot(subjectCFrame.ZVector))
 	local yawVel = yawVelocity(subjectRotVel, subjectCFrame)
 	local pitchVel = pitchVelocity(subjectRotVel, subjectCFrame)
 
@@ -183,7 +190,7 @@ function VRVehicleCamera:Update()
 			self:ResetZoom()
 		end
 
-		self:UpdateEdgeBlur(localPlayer, dt)
+		self:UpdateEdgeBlur(LocalPlayer, dt)
 	else 
 		-- first person in vehicle : lock orientation for stable camera
 		local dir = Vector3.new(processedRotation.LookVector.X, 0, processedRotation.LookVector.Z).Unit
@@ -193,7 +200,7 @@ function VRVehicleCamera:Update()
 		focus =  CFrame.new(subjectCFrame * localOffset) * planarRotation
 		cf = focus * CFrame.new(0, 0, zoom)
 
-		self:StartVREdgeBlur(localPlayer)
+		self:StartVREdgeBlur(LocalPlayer)
 	end
 
 	return cf, focus

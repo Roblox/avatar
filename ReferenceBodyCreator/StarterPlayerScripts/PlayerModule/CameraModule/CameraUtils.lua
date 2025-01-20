@@ -327,4 +327,3 @@ if FFlagUserCameraToggleDontSetMouseBehaviorOrRotationTypeEveryFrame then
 end
 
 return CameraUtils
-

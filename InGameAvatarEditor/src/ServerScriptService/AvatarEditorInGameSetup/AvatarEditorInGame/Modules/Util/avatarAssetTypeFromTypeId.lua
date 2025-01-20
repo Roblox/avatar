@@ -1,4 +1,3 @@
-
 local function avatarAssetTypeFromTypeId(typeId)
 	if type(typeId) == "string" then
 		typeId = tonumber(typeId)

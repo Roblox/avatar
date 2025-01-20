@@ -4,7 +4,7 @@
 	-- 2018 PlayerScripts Update - AllYourBlox
 --]]
 
---[[ Flags ]]
+--[[ Flags ]]--
 local FFlagUserExcludeNonCollidableForPathfindingSuccess, FFlagUserExcludeNonCollidableForPathfindingResult =
     pcall(function() return UserSettings():IsUserFeatureEnabled("UserExcludeNonCollidableForPathfinding") end)
 local FFlagUserExcludeNonCollidableForPathfinding = FFlagUserExcludeNonCollidableForPathfindingSuccess and FFlagUserExcludeNonCollidableForPathfindingResult
@@ -12,12 +12,15 @@ local FFlagUserExcludeNonCollidableForPathfinding = FFlagUserExcludeNonCollidabl
 --[[ Roblox Services ]]--
 local UserInputService = game:GetService("UserInputService")
 local PathfindingService = game:GetService("PathfindingService")
-local Players = game:GetService("Players")
+local PlayersService = game:GetService("Players")
 local DebrisService = game:GetService('Debris')
 local StarterGui = game:GetService("StarterGui")
 local Workspace = game:GetService("Workspace")
 local CollectionService = game:GetService("CollectionService")
 local GuiService = game:GetService("GuiService")
+
+-- (LocalPlayer) The player instance of the local player
+local Player = PlayersService.LocalPlayer
 
 --[[ Configuration ]]
 local ShowPath = true
@@ -37,13 +40,10 @@ local movementKeys = {
 	[Enum.KeyCode.Down] = true;
 }
 
-local Player = Players.LocalPlayer
-
 local ClickToMoveDisplay = require(script.Parent:WaitForChild("ClickToMoveDisplay"))
 
 local ZERO_VECTOR3 = Vector3.new(0,0,0)
 local ALMOST_ZERO = 0.000001
-
 
 --------------------------UTIL LIBRARY-------------------------------
 local Utility = {}
@@ -157,9 +157,11 @@ end
 local function minV(a: Vector3, b: Vector3)
 	return Vector3.new(math.min(a.X, b.X), math.min(a.Y, b.Y), math.min(a.Z, b.Z))
 end
+
 local function maxV(a, b)
 	return Vector3.new(math.max(a.X, b.X), math.max(a.Y, b.Y), math.max(a.Z, b.Z))
 end
+
 local function getCollidableExtentsSize(character: Model?)
 	if character == nil or character.PrimaryPart == nil then return end
 	local toLocalCFrame = character.PrimaryPart.CFrame:inverse()
@@ -187,8 +189,7 @@ local function getCollidableExtentsSize(character: Model?)
 		end
 	end
 	local r = max - min
-	if r.X < 0 or r.Y < 0 or r.Z < 0 then return nil end
-	return r
+	return (r.X < 0 or r.Y < or r.Z < 0) and r or nil
 end
 
 -----------------------------------PATHER--------------------------------------
@@ -720,7 +721,7 @@ function OnTap(tapPositions: {Vector3}, goToPoint: Vector3?, wasTouchTap: boolea
 
 			local hitChar, hitHumanoid = Utility.FindCharacterAncestor(hitPart)
 			if wasTouchTap and hitHumanoid and StarterGui:GetCore("AvatarContextMenuEnabled") then
-				local clickedPlayer = Players:GetPlayerFromCharacter(hitHumanoid.Parent)
+				local clickedPlayer = PlayersService:GetPlayerFromCharacter(hitHumanoid.Parent)
 				if clickedPlayer then
 					CleanupPath()
 					return
@@ -799,16 +800,21 @@ function ClickToMove.new(CONTROL_ACTION_PRIORITY)
 end
 
 function ClickToMove:DisconnectEvents()
-	DisconnectEvent(self.tapConn)
-	DisconnectEvent(self.inputBeganConn)
-	DisconnectEvent(self.inputChangedConn)
-	DisconnectEvent(self.inputEndedConn)
-	DisconnectEvent(self.humanoidDiedConn)
-	DisconnectEvent(self.characterChildAddedConn)
-	DisconnectEvent(self.onCharacterAddedConn)
-	DisconnectEvent(self.renderSteppedConn)
-	DisconnectEvent(self.characterChildRemovedConn)
-	DisconnectEvent(self.menuOpenedConnection)
+	-- Disconnect all event connections
+	for _, conn in ipairs({
+		self.tapConn,
+		self.inputBeganConn,
+		self.inputChangedConn,
+		self.inputEndedConn,
+		self.humanoidDiedConn,
+		self.characterChildAddedConn,
+		self.onCharacterAddedConn,
+		self.renderSteppedConn,
+		self.characterChildRemovedConn,
+		self.menuOpenedConnection
+	}) do
+		DisconnectEvent(conn)
+	end
 end
 
 function ClickToMove:OnTouchBegan(input, processed)
@@ -834,7 +840,6 @@ function ClickToMove:OnTouchEnded(input, processed)
 	self.fingerTouches[input] = nil
 end
 
-
 function ClickToMove:OnCharacterAdded(character)
 	self:DisconnectEvents()
 
@@ -844,8 +849,7 @@ function ClickToMove:OnCharacterAdded(character)
 		end
 
 		-- Cancel path when you use the keyboard controls if wasd is enabled.
-		if self.wasdEnabled and processed == false and input.UserInputType == Enum.UserInputType.Keyboard
-			and movementKeys[input.KeyCode] then
+		if self.wasdEnabled and processed == false and input.UserInputType == Enum.UserInputType.Keyboard and movementKeys[input.KeyCode] then
 			CleanupPath()
 			ClickToMoveDisplay.CancelFailureAnimation()
 		end

@@ -1,10 +1,12 @@
+--[[ Roblox Services ]]--
 local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+--[[ Constants ]]--
 local Modules = ReplicatedStorage:WaitForChild("Modules")
-
 local Actions = require(Modules:WaitForChild("Actions"))
 
+--[[ The Module ]]--
 local ActionQueue = {}
 ActionQueue.__index = ActionQueue
 

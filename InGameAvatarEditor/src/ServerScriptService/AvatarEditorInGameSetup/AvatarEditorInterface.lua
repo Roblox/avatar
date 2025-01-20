@@ -1,28 +1,26 @@
+--[[ Roblox Services ]]--
 local AvatarEditorService = game:GetService("AvatarEditorService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local AvatarEvents = ReplicatedStorage:WaitForChild("AvatarEvents")
-local avatarEditorClosed = AvatarEvents.AvatarEditorClosed
-
 local LocalPlayer = Players.LocalPlayer
-
 local PlayerGui = LocalPlayer.PlayerGui
 while not PlayerGui do
 	LocalPlayer.ChildAdded:Wait()
 	PlayerGui = LocalPlayer.PlayerGui
 end
 
+--[[ Constants ]]--
+local AvatarEvents = ReplicatedStorage:WaitForChild("AvatarEvents")
+local avatarEditorClosed = AvatarEvents.AvatarEditorClosed
+
 local AvatarEditorInGame = script.Parent
-
 local AvatarEditorInGameScreenGui = AvatarEditorInGame:FindFirstChild("AvatarEditorInGame")
-
 AvatarEditorInGameScreenGui.Parent = PlayerGui
 
 local Modules = PlayerGui:WaitForChild("AvatarEditorInGame"):WaitForChild("Modules")
 
 local UIBlox = require(Modules.Packages.UIBlox)
-
 UIBlox.init()
 
 local SetupAvatarEditor = require(Modules.Setup.SetupAvatarEditor)
@@ -31,6 +29,7 @@ local humanoidDescriptionFromState = require(Modules.Util.humanoidDescriptionFro
 
 local RunAvatarSceneManager = require(Modules.Setup.Actions.RunAvatarSceneManager)
 
+--[[ The Module ]]--
 local AvatarEditorInterface = {}
 AvatarEditorInterface.__index = AvatarEditorInterface
 

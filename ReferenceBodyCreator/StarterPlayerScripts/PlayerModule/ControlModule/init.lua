@@ -10,16 +10,16 @@
 
 	2018 PlayerScripts Update - AllYourBlox
 --]]
-local ControlModule = {}
-ControlModule.__index = ControlModule
 
 --[[ Roblox Services ]]--
-local Players = game:GetService("Players")
+local PlayersService = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 local UserGameSettings = UserSettings():GetService("UserGameSettings")
 local VRService = game:GetService("VRService")
+
+local LocalPlayer = PlayersService.LocalPlayer
 
 -- Roblox User Input Control Modules - each returns a new() constructor function used to create controllers as needed
 local Keyboard = require(script:WaitForChild("Keyboard"))
@@ -39,7 +39,6 @@ local TouchThumbstick = require(script:WaitForChild("TouchThumbstick"))
 -- TouchJump controller if any of these are active
 local ClickToMove = require(script:WaitForChild("ClickToMoveController"))
 local TouchJump = require(script:WaitForChild("TouchJump"))
-
 local VehicleController = require(script:WaitForChild("VehicleController"))
 
 local CONTROL_ACTION_PRIORITY = Enum.ContextActionPriority.Default.Value
@@ -84,6 +83,10 @@ local computerInputTypeToModuleMap = {
 
 local lastInputType
 
+--[[ The Class ]]--
+local ControlModule = {}
+ControlModule.__index = ControlModule
+
 function ControlModule.new()
 	local self = setmetatable({},ControlModule)
 
@@ -94,7 +97,7 @@ function ControlModule.new()
 	self.activeControlModule = nil	-- Used to prevent unnecessarily expensive checks on each input event
 	self.activeController = nil
 	self.touchJumpController = nil
-	self.moveFunction = Players.LocalPlayer.Move
+	self.moveFunction = LocalPlayer.Move
 	self.humanoid = nil
 	self.lastInputType = Enum.UserInputType.None
 
@@ -106,10 +109,10 @@ function ControlModule.new()
 
 	self.vehicleController = VehicleController.new(CONTROL_ACTION_PRIORITY)
 
-	Players.LocalPlayer.CharacterAdded:Connect(function(char) self:OnCharacterAdded(char) end)
-	Players.LocalPlayer.CharacterRemoving:Connect(function(char) self:OnCharacterRemoving(char) end)
-	if Players.LocalPlayer.Character then
-		self:OnCharacterAdded(Players.LocalPlayer.Character)
+	LocalPlayer.CharacterAdded:Connect(function(char) self:OnCharacterAdded(char) end)
+	LocalPlayer.CharacterRemoving:Connect(function(char) self:OnCharacterRemoving(char) end)
+	if LocalPlayer.Character then
+		self:OnCharacterAdded(LocalPlayer.Character)
 	end
 
 	RunService:BindToRenderStep("ControlScriptRenderstep", Enum.RenderPriority.Input.Value, function(dt)
@@ -120,18 +123,17 @@ function ControlModule.new()
 		self:OnLastInputTypeChanged(newLastInputType)
 	end)
 
-
 	UserGameSettings:GetPropertyChangedSignal("TouchMovementMode"):Connect(function()
 		self:OnTouchMovementModeChange()
 	end)
-	Players.LocalPlayer:GetPropertyChangedSignal("DevTouchMovementMode"):Connect(function()
+	LocalPlayer:GetPropertyChangedSignal("DevTouchMovementMode"):Connect(function()
 		self:OnTouchMovementModeChange()
 	end)
 
 	UserGameSettings:GetPropertyChangedSignal("ComputerMovementMode"):Connect(function()
 		self:OnComputerMovementModeChange()
 	end)
-	Players.LocalPlayer:GetPropertyChangedSignal("DevComputerMovementMode"):Connect(function()
+	LocalPlayer:GetPropertyChangedSignal("DevComputerMovementMode"):Connect(function()
 		self:OnComputerMovementModeChange()
 	end)
 
@@ -145,12 +147,12 @@ function ControlModule.new()
 	end)
 
 	if UserInputService.TouchEnabled then
-		self.playerGui = Players.LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		self.playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
 		if self.playerGui then
 			self:CreateTouchGuiContainer()
 			self:OnLastInputTypeChanged(UserInputService:GetLastInputType())
 		else
-			self.playerGuiAddedConn = Players.LocalPlayer.ChildAdded:Connect(function(child)
+			self.playerGuiAddedConn = LocalPlayer.ChildAdded:Connect(function(child)
 				if child:IsA("PlayerGui") then
 					self.playerGui = child
 					self:CreateTouchGuiContainer()
@@ -191,7 +193,7 @@ function ControlModule:EnableActiveControlModule()
 		-- When the developer is forcing click to move, the most keyboard controls (WASD) are not available, only jump.
 		self.activeController:Enable(
 			true,
-			Players.LocalPlayer.DevComputerMovementMode == Enum.DevComputerMovementMode.UserChoice,
+			LocalPlayer.DevComputerMovementMode == Enum.DevComputerMovementMode.UserChoice,
 			self.touchJumpController
 		)
 	elseif self.touchControlFrame then
@@ -230,7 +232,7 @@ function ControlModule:Disable()
 		self.activeController:Enable(false)
 
 		if self.moveFunction then
-			self.moveFunction(Players.LocalPlayer, Vector3.new(0,0,0), true)
+			self.moveFunction(LocalPlayer, Vector3.new(0,0,0), true)
 		end
 	end
 end
@@ -243,7 +245,7 @@ function ControlModule:SelectComputerMovementModule(): ({}?, boolean)
 	end
 
 	local computerModule
-	local DevMovementMode = Players.LocalPlayer.DevComputerMovementMode
+	local DevMovementMode = LocalPlayer.DevComputerMovementMode
 
 	if DevMovementMode == Enum.DevComputerMovementMode.UserChoice then
 		computerModule = computerInputTypeToModuleMap[lastInputType]
@@ -280,7 +282,7 @@ function ControlModule:SelectTouchModule(): ({}?, boolean)
 		return nil, false
 	end
 	local touchModule
-	local DevMovementMode = Players.LocalPlayer.DevTouchMovementMode
+	local DevMovementMode = LocalPlayer.DevTouchMovementMode
 	if DevMovementMode == Enum.DevTouchMovementMode.UserChoice then
 		touchModule = movementEnumToModuleMap[UserGameSettings.TouchMovementMode]
 	elseif DevMovementMode == Enum.DevTouchMovementMode.Scriptable then
@@ -367,7 +369,7 @@ function ControlModule:OnRenderStepped(dt)
 			if cameraRelative then
 				moveVector = calculateRawMoveVector(self.humanoid, moveVector)
 			end
-			self.moveFunction(Players.LocalPlayer, moveVector, false)
+			self.moveFunction(LocalPlayer, moveVector, false)
 		--end
 
 		-- And make them jump if needed
