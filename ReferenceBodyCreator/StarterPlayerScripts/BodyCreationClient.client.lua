@@ -338,7 +338,11 @@ local function EnterCreationModeInitial(modelName)
 		local loadingScreen = PlayerGui:WaitForChild("ScreenGui"):WaitForChild("LoadingScreen")
 		loadingScreen.Visible = false
 		warn(err)
-		Message.CreateMessageGui("Setup failed, out of Memory.")
+		if string.find(err, Constants.FAILED_TO_CREATE_EI_MSG) then
+			Message.CreateMessageGui("Setup failed, out of Memory.")
+		else
+			Message.CreateMessageGui("Unexpected error.")
+		end
 	end
 
 	task.wait(3)

@@ -23,4 +23,6 @@ Constants.CONTROL_TYPE_PLANE = "Plane"
 Constants.BRUSH_LAYER = "BrushLayer"
 Constants.STICKER_LAYER_PREFIX = "StickerLayer"
 
+Constants.FAILED_TO_CREATE_EI_MSG = "Failed to create editable image."
+
 return Constants
