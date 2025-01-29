@@ -8,8 +8,6 @@ local BlanksData = require(Config:WaitForChild("BlanksData"))
 local Constants = require(Config:WaitForChild("Constants"))
 local RegionMaps = require(Config:WaitForChild("RegionMaps"))
 
-local FAILED_TO_CREATE_EI_MSG = "Failed to create editable image."
-
 type SingleLayer = {
 	name: string,
 	editableImage: EditableImage,
@@ -77,7 +75,7 @@ local function SetupModelTextures(model: Model): ModelTextureInfo
 
 		local baseTexture = AssetService:CreateEditableImageAsync(Content.fromUri(descendant.TextureID))
 		if not baseTexture then
-			error(FAILED_TO_CREATE_EI_MSG)
+			error(Constants.FAILED_TO_CREATE_EI_MSG)
 		end
 
 		local baseTextureLayer: SingleLayer = {
@@ -89,12 +87,12 @@ local function SetupModelTextures(model: Model): ModelTextureInfo
 			Size = baseTexture.Size,
 		})
 		if not outputTexture then
-			error(FAILED_TO_CREATE_EI_MSG)
+			error(Constants.FAILED_TO_CREATE_EI_MSG)
 		end
 
 		local brushLayerEI = AssetService:CreateEditableImage({ Size = baseTexture.Size })
 		if not brushLayerEI then
-			error(FAILED_TO_CREATE_EI_MSG)
+			error(Constants.FAILED_TO_CREATE_EI_MSG)
 		end
 
 		local newLayerInfo: LayerInfo = {
@@ -141,7 +139,7 @@ local function GetAllRegionBuffers(sourceRegionMap: RegionMaps.RegionMap): { [st
 				local editableImage: EditableImage =
 					AssetService:CreateEditableImageAsync(Content.fromUri(region.regionTextureId))
 				if not editableImage then
-					error(FAILED_TO_CREATE_EI_MSG)
+					error(Constants.FAILED_TO_CREATE_EI_MSG)
 				end
 				allRegionBuffers[region.regionTextureId] =
 					editableImage:ReadPixelsBuffer(Vector2.zero, editableImage.Size)
@@ -186,7 +184,7 @@ local function SetupMeshPartToRegionMap(regionMap: RegionMap)
 				local editableImage: EditableImage =
 					AssetService:CreateEditableImageAsync(Content.fromUri(regionData.regionTextureId))
 				if not editableImage then
-					error(FAILED_TO_CREATE_EI_MSG)
+					error(Constants.FAILED_TO_CREATE_EI_MSG)
 				end
 				allSubRegionBuffers[regionData.regionTextureId] =
 					editableImage:ReadPixelsBuffer(Vector2.zero, editableImage.Size)
@@ -218,7 +216,7 @@ function TextureInfo.new(model, blankData: BlanksData.BlankData)
 		-- TODO: don't hardcode the size
 		local stickerEI = AssetService:CreateEditableImage({Size = Vector2.new(1024,1024)})
 		if not stickerEI then
-			error(FAILED_TO_CREATE_EI_MSG)
+			error(Constants.FAILED_TO_CREATE_EI_MSG)
 		end
 		self.reservedStickerEditableImageMap[stickerLayerName] = stickerEI
 	end
