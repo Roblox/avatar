@@ -16,8 +16,6 @@ local tokenMap = {
 
 local TOKEN = tokenMap[game.PlaceId]
 
-local DEBUG_IMPORT_PATH = nil -- "/Users/tcuadra/Downloads/autosetup.glb"
-
 -- Cache all humanoid descriptions that we fetch since they will be removed once
 -- fetched from both client and server.
 local cachedHumanoidDescriptions = {}
@@ -78,10 +76,6 @@ function AvatarUtils.equipAvatarOnClientById(generationId: string)
 end
 
 function AvatarUtils.setupAvatar(player: Player, inputModel: Model)
-	if DEBUG_IMPORT_PATH then
-		return AvatarCreationService:ImportAvatarAsync(player, DEBUG_IMPORT_PATH)
-	end
-
 	local model = inputModel:Clone()
 	EditableUtils.convertAllToEditables(model)
 	return AvatarCreationService:AutoSetupAvatarAsync(player, model)
