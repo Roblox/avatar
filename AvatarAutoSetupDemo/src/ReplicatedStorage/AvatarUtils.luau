@@ -12,6 +12,7 @@ local AvatarUtils = {}
 local tokenMap = {
 	[120412862677951] = "f40f3712-2e6e-4263-9d39-18efdf340fca",
 	[70760078093031] = "abcfb7e7-425f-4912-8e2f-baca98de6bc4",
+	[90515339563907] = "b15869c1-79ab-4260-a4f3-0a0ce6a73e72",
 }
 
 local TOKEN = tokenMap[game.PlaceId]
