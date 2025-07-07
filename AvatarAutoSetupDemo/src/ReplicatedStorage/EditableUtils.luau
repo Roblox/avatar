@@ -16,6 +16,7 @@ local function convertToEditableMesh(meshPart: MeshPart)
 			return
 		end
 		local newMesh = output
+		newMesh.TextureContent = meshPart.TextureContent
 		success, output = pcall(function()
 			meshPart:ApplyMesh(newMesh)
 		end)
