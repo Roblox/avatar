@@ -454,7 +454,7 @@ function SelfiePreview:Setup3dTimeExpiredAlert()
 	buttonPanel.BackgroundTransparency = 1
 	buttonPanel.LayoutOrder = 4
 	buttonPanel.Parent = self.gen3DTimeExpiredPanel
-	
+
 	-- A button that the user can click to close the gen3DTimeExpiredPanel
 	self.closeGen3DTimeExpiredButton = Instance.new("TextButton")
 	self.closeGen3DTimeExpiredButton.Name = "CloseGen3DTimeExpiredButton"
