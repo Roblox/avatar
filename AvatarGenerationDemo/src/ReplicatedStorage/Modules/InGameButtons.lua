@@ -63,10 +63,21 @@ function InGameButtons:CreateInGameButtons()
 	self.toggleButton.Activated:Connect(function()
 		self.creationManager:OpenAvatarEditor()
 	end)
+
+	self.publishButton = self:CreateInGameButton("PublishAvatarButton", "Publish Avatar", Color3.fromRGB(7, 170, 43))
+	self.publishButton.Parent = inGameButtonsFrame
+
+	self.publishButton.Activated:Connect(function()
+		self.creationManager:PublishAvatar()
+	end)
 end
 
 function InGameButtons:SetToggleButtonVisibility(visible)
 	self.toggleButton.Visible = visible
+end
+
+function InGameButtons:SetPublishButtonVisibility(visible)
+	self.publishButton.Visible = visible
 end
 
 return InGameButtons

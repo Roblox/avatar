@@ -32,7 +32,6 @@ end
 -- On the left: a set of buttons to change the avatar's pose?
 -- Also need a button to reset the avatar to their original appearance
 function AvatarEditor:CreateUI()
-
 	-- ScreenGui to hold all UI
 	self.screenGui = Instance.new("ScreenGui")
 	self.screenGui.Name = "AvatarEditorGui"
@@ -138,8 +137,8 @@ function AvatarEditor:CreateUI()
 	UIUtils.AddUICorner(tryOnClothingButton, 10)
 
 	tryOnClothingButton.Activated:Connect(function()
-	   	self:EquipTShirt(7178736794)
-	   	self:EquipPant(9174391966)
+		self:EquipTShirt(7178736794)
+		self:EquipPant(9174391966)
 	end)
 
 	-- Button to close the editor
@@ -200,7 +199,217 @@ function AvatarEditor:SetupGridView(name)
 	return parentFrame, gridFrame
 end
 
-function AvatarEditor:SetupGeneratedHeadItemTile(headModelName, editableImage, imageAssetId, playerPromptString, modelData)
+local function removeBackground(editableImage)
+	local FRAME_BUDGET_MS = 16
+
+	local SAMPLE_PATCH = 3
+	local EDGE_STEP = 16
+
+	local HARD_DIST = 28 * 28
+	local SOFT_DIST = 10 * 10
+
+	local width = editableImage.Size.X
+	local height = editableImage.Size.Y
+	local pixelsBuffer = editableImage:ReadPixelsBuffer(Vector2.zero, editableImage.Size)
+
+	local math_floor = math.floor
+	local math_clamp = math.clamp
+	local table_sort = table.sort
+
+	local function getPixel(x, y)
+		local o = (y * width + x) * 4
+		local r = buffer.readu8(pixelsBuffer, o)
+		local g = buffer.readu8(pixelsBuffer, o + 1)
+		local b = buffer.readu8(pixelsBuffer, o + 2)
+		local a = buffer.readu8(pixelsBuffer, o + 3)
+		return r, g, b, a
+	end
+
+	local function setPixelRGBA(x, y, r, g, b, a)
+		local o = (y * width + x) * 4
+		buffer.writeu8(pixelsBuffer, o, r)
+		buffer.writeu8(pixelsBuffer, o + 1, g)
+		buffer.writeu8(pixelsBuffer, o + 2, b)
+		buffer.writeu8(pixelsBuffer, o + 3, a)
+	end
+
+	local function median(t)
+		table_sort(t)
+		local n = #t
+		if n == 0 then
+			return 255
+		end
+		if n % 2 == 1 then
+			return t[(n + 1) // 2]
+		else
+			return 0.5 * (t[n // 2] + t[n // 2 + 1])
+		end
+	end
+
+	local function samplePatch(cx, cy, half)
+		local rs, gs, bs = {}, {}, {}
+		local idx = 1
+		for dy = -half, half do
+			local y = math_clamp(cy + dy, 0, height - 1)
+			for dx = -half, half do
+				local x = math_clamp(cx + dx, 0, width - 1)
+				local r, g, b = getPixel(x, y)
+				rs[idx], gs[idx], bs[idx] = r, g, b
+				idx = idx + 1
+			end
+		end
+		return median(rs), median(gs), median(bs)
+	end
+
+	local bgSamplesR, bgSamplesG, bgSamplesB = {}, {}, {}
+	local edgePoints = {
+		{ 0, 0 },
+		{ width - 1, 0 },
+		{ 0, height - 1 },
+		{ width - 1, height - 1 },
+		{ width // 2, 0 },
+		{ width // 2, height - 1 },
+		{ 0, height // 2 },
+		{ width - 1, height // 2 },
+	}
+
+	for i = 1, #edgePoints do
+		local p = edgePoints[i]
+		local r, g, b = samplePatch(p[1], p[2], SAMPLE_PATCH)
+		bgSamplesR[i], bgSamplesG[i], bgSamplesB[i] = r, g, b
+	end
+
+	local function srgbToLinearU8(u8)
+		local s = u8 / 255
+		if s <= 0.04045 then
+			return s / 12.92 * 255
+		else
+			return ((s + 0.055) / 1.055) ^ 2.4 * 255
+		end
+	end
+
+	local bgR = math_floor(median(bgSamplesR) + 0.5)
+	local bgG = math_floor(median(bgSamplesG) + 0.5)
+	local bgB = math_floor(median(bgSamplesB) + 0.5)
+	local bgRLinear = srgbToLinearU8(bgR)
+	local bgGLinear = srgbToLinearU8(bgG)
+	local bgBLinear = srgbToLinearU8(bgB)
+
+	local function colorDistToBackground(r, g, b)
+		local lr = srgbToLinearU8(r)
+		local lg = srgbToLinearU8(g)
+		local lb = srgbToLinearU8(b)
+		local dr = lr - bgRLinear
+		local dg = lg - bgGLinear
+		local db = lb - bgBLinear
+		return dr * dr + dg * dg + db * db
+	end
+
+	local visited = table.create(width * height, false)
+
+	local function processPixel(x, y)
+		local r, g, b, a = getPixel(x, y)
+		local d = colorDistToBackground(r, g, b)
+
+		local newA
+		if d <= SOFT_DIST then
+			newA = 0
+		elseif d >= HARD_DIST then
+			newA = a
+		else
+			local t = (d - SOFT_DIST) / (HARD_DIST - SOFT_DIST)
+			newA = math_floor(a * t + 0.5)
+		end
+
+		if newA ~= a then
+			local scale = newA / 255
+			setPixelRGBA(
+				x,
+				y,
+				math_floor(r * scale + 0.5),
+				math_floor(g * scale + 0.5),
+				math_floor(b * scale + 0.5),
+				newA
+			)
+		end
+
+		return d <= HARD_DIST
+	end
+
+	local function floodFill(seeds)
+		local queue = {}
+		local qStart, qEnd = 1, 0
+
+		local function addPixelToQueue(x, y)
+			if x < 0 or x >= width or y < 0 or y >= height then
+				return
+			end
+
+			local idx = y * width + x
+			if visited[idx] then
+				return
+			end
+			visited[idx] = true
+
+			qEnd += 1
+			queue[qEnd] = { x, y }
+		end
+
+		for i = 1, #seeds do
+			local s = seeds[i]
+			addPixelToQueue(s[1], s[2])
+		end
+
+		local lastWaitTime = os.clock()
+		while qStart <= qEnd do
+			local s = queue[qStart]
+			qStart = qStart + 1
+
+			local runTimeMs = (os.clock() - lastWaitTime) * 1000
+			if runTimeMs > FRAME_BUDGET_MS then
+				task.wait()
+				lastWaitTime = os.clock()
+			end
+
+			local x, y = s[1], s[2]
+			if processPixel(x, y) then
+				addPixelToQueue(x + 1, y)
+				addPixelToQueue(x - 1, y)
+				addPixelToQueue(x, y + 1)
+				addPixelToQueue(x, y - 1)
+				addPixelToQueue(x + 1, y + 1)
+				addPixelToQueue(x - 1, y - 1)
+				addPixelToQueue(x + 1, y - 1)
+				addPixelToQueue(x - 1, y + 1)
+			end
+		end
+	end
+
+	local seeds = {}
+	for x = 0, width - 1, EDGE_STEP do
+		seeds[#seeds + 1] = { x, 0 }
+		seeds[#seeds + 1] = { x, height - 1 }
+	end
+	for y = 0, height - 1, EDGE_STEP do
+		seeds[#seeds + 1] = { 0, y }
+		seeds[#seeds + 1] = { width - 1, y }
+	end
+	seeds[#seeds + 1] = { 0, 0 }
+	seeds[#seeds + 1] = { width - 1, 0 }
+	seeds[#seeds + 1] = { 0, height - 1 }
+	seeds[#seeds + 1] = { width - 1, height - 1 }
+
+	floodFill(seeds)
+	editableImage:WritePixelsBuffer(Vector2.zero, editableImage.Size, pixelsBuffer)
+end
+
+function AvatarEditor:SetupGeneratedHeadItemTile(
+	headModelName,
+	editableImage,
+	imageAssetId,
+	playerPromptString,
+	modelData
+)
 	local tileWidthPixels = 100
 	local tileFrame = Instance.new("ImageButton")
 	tileFrame.Name = "HeadTile"
@@ -228,6 +437,8 @@ function AvatarEditor:SetupGeneratedHeadItemTile(headModelName, editableImage, i
 	UIUtils.AddUICorner(headImage, 5)
 
 	if editableImage then
+		removeBackground(editableImage)
+
 		local imageRectSize, imageRectOffset = UIUtils.GetImageRightHalfRect(editableImage)
 		headImage.ImageContent = Content.fromObject(editableImage)
 		if imageRectSize then
@@ -328,7 +539,7 @@ function AvatarEditor:EquipTShirt(assetId)
 	accessoryDescription.AssetId = assetId
 	accessoryDescription.AccessoryType = Enum.AccessoryType.TShirt
 	accessoryDescription.Parent = self.currentHumanoidDescription
-	
+
 	self:RefreshModel()
 end
 
@@ -342,7 +553,7 @@ function AvatarEditor:EquipPant(assetId)
 	accessoryDescription.AssetId = assetId
 	accessoryDescription.AccessoryType = Enum.AccessoryType.Pants
 	accessoryDescription.Parent = self.currentHumanoidDescription
-	
+
 	self:RefreshModel()
 end
 
@@ -383,7 +594,6 @@ end
 function AvatarEditor:EquipHead(modelName, playerPromptString)
 	self.equippedHeadModel = modelName
 
-
 	-- Remove existing head from humanoid description
 	for _, child in pairs(self.currentHumanoidDescription:GetChildren()) do
 		if child:IsA("BodyPartDescription") and child.BodyPart == Enum.BodyPart.Head then
@@ -410,7 +620,6 @@ function AvatarEditor:EquipHead(modelName, playerPromptString)
 	local model = workspace:WaitForChild("GeneratedModels"):WaitForChild(modelName)
 
 	self:PopulateBodyPartDescription(self.currentHumanoidDescription, model, modelName, Enum.BodyPart.Head, {"Head"})
-
 end
 
 function AvatarEditor:RecursivePrintChildren(parent, indentation)
@@ -432,13 +641,6 @@ end
 
 function AvatarEditor:RefreshModel()
 	self:FixDuplicateBodyParts()
-
-	self.currentHumanoidDescription.DepthScale = 1
-	self.currentHumanoidDescription.HeightScale = 1
-	self.currentHumanoidDescription.ProportionScale = 0
-	self.currentHumanoidDescription.BodyTypeScale = 0
-	self.currentHumanoidDescription.WidthScale = 1
-	self.currentHumanoidDescription.HeadScale = 1
 
 	local newModel = game.Players:CreateHumanoidModelFromDescription(self.currentHumanoidDescription, Enum.HumanoidRigType.R15)
 	newModel.Name = "AvatarModel"
@@ -464,13 +666,6 @@ function AvatarEditor:RefreshModelFromHumanoidDescription(humanoidDescription)
 	end
 
 	self.currentHumanoidDescription = humanoidDescription
-
-	humanoidDescription.DepthScale = 1
-	humanoidDescription.HeightScale = 1
-	humanoidDescription.ProportionScale = 0
-	humanoidDescription.BodyTypeScale = 0
-	humanoidDescription.WidthScale = 1
-	humanoidDescription.HeadScale = 1
 
 	local newModel = game.Players:CreateHumanoidModelFromDescription(humanoidDescription, Enum.HumanoidRigType.R15)
 	newModel.Name = "AvatarModel"
@@ -570,7 +765,6 @@ function AvatarEditor:Show()
 			modelData
 		)
 	end
-
 end
 
 function AvatarEditor:ResetGrids()

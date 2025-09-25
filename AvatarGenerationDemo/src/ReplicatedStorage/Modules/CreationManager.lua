@@ -22,6 +22,7 @@ local SelfiePreview = require(Modules:WaitForChild("SelfiePreview"))
 local AvatarEditor = require(Modules:WaitForChild("AvatarEditor"))
 local InGameButtons = require(Modules:WaitForChild("InGameButtons"))
 local ModelDisplay = require(Modules:WaitForChild("ModelDisplay"))
+local PublishAvatarEvent = Events:WaitForChild("PublishAvatar")
 
 local CreationManager = {}
 CreationManager.__index = CreationManager
@@ -83,7 +84,7 @@ function CreationManager.new(textPromptUI)
 		if not self.generating2d then
 			return
 		end
-		local prompt = self.textPromptUI.textPromptTextBox.Text.." "
+		local prompt = self.textPromptUI.textPromptTextBox.Text..""
 		Generate2DEvent:FireServer(prompt, {["FileId"] = fileId}, photoData)
 	end)
 
@@ -113,13 +114,21 @@ function CreationManager.new(textPromptUI)
 end
 
 function CreationManager:CloseAvatarEditor()
+	if self.avatarEditor:IsCurrentEquippedAvatarGenerated() then 
+		self.inGameButtons:SetPublishButtonVisibility(true)
+	end
 	self.avatarEditor:Hide()
 	self.inGameButtons:SetToggleButtonVisibility(true)
 end
 
 function CreationManager:OpenAvatarEditor()
 	self.inGameButtons:SetToggleButtonVisibility(false)
+	self.inGameButtons:SetPublishButtonVisibility(false)
 	self.avatarEditor:Show()
+end
+
+function CreationManager:PublishAvatar()
+	PublishAvatarEvent:FireServer(self.avatarEditor:GetCurrentGeneratedAvatarId())
 end
 
 function CreationManager:OnSessionReady(sessionInfo)
