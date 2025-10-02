@@ -16,13 +16,14 @@ local DemoModel = {}
 DemoModel.__index = DemoModel
 
 type PedestalFolder = Folder & {
-    Model: Model,
-    Clicker: Folder & {
-        ClickDetector: ClickDetector,
-        SurfaceGui: SurfaceGui & {
-            TextLabel: TextLabel,
-        },
-    },
+	Model: Model,
+	Clicker: Folder & {
+		ClickDetector: ClickDetector,
+		SurfaceGui: SurfaceGui & {
+			TextLabel: TextLabel,
+			ProgressBar: Frame,
+		},
+	},
 }
 
 function DemoModel.new(pedestal: PedestalFolder, name: string?, onEquip: (demoModel: any) -> ())
@@ -34,6 +35,7 @@ function DemoModel.new(pedestal: PedestalFolder, name: string?, onEquip: (demoMo
 	self.onEquip = onEquip
 	self.clickDetector = pedestal.Clicker.ClickDetector
 	self.textLabel = pedestal.Clicker.SurfaceGui.TextLabel
+	self.progressBar = pedestal.Clicker.SurfaceGui:FindFirstChild("ProgressBar")
 	self.state = STATE_INIT
 	self.generationId = nil :: string?
 	self.connection = self.clickDetector.MouseClick:Connect(function(player)
@@ -49,18 +51,30 @@ function DemoModel:setText(text: string)
 	self.textLabel.Text = text
 end
 
+function DemoModel:setProgress(progress: number)
+	if not self.progressBar then
+		return
+	end
+	progress = math.clamp(progress, 0, 1)
+	self.progressBar.Size = UDim2.new(progress, 0, 1, 0)
+end
+
 -- Update the clickable text based on the current state
 function DemoModel:updateText()
 	if self.state == STATE_INIT then
 		self:setText("Setup Avatar")
+		self:setProgress(0)
 	elseif self.state == STATE_INPROGRESS then
 		self:setText("In progress...")
 	elseif self.state == STATE_EQUIP then
 		self:setText("Equip")
+		self:setProgress(1)
 	elseif self.state == STATE_PUBLISH then
 		self:setText("Publish")
+		self:setProgress(1)
 	else
 		self:setText("Error. Retry")
+		self:setProgress(0)
 	end
 end
 
@@ -75,7 +89,9 @@ function DemoModel:doAutoSetup(player: Player)
 	self:setState(STATE_INPROGRESS)
 	task.spawn(function()
 		local success, errorMessage = pcall(function()
-			self.generationId = AvatarUtils.setupAvatar(player, self.model)
+			self.generationId = AvatarUtils.setupAvatar(player, self.model, function(progressInfo: AvatarUtils.ProgressInfo)
+				self:setProgress(progressInfo.Progress)
+			end)
 		end)
 
 		if success then

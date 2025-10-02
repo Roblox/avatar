@@ -76,10 +76,18 @@ function AvatarUtils.equipAvatarOnClientById(generationId: string)
 	equipAvatarOnClient(model)
 end
 
-function AvatarUtils.setupAvatar(player: Player, inputModel: Model)
+export type ProgressInfo = {
+	Progress: number, -- A value between 0 and 1
+}
+
+function AvatarUtils.setupAvatar(player: Player, inputModel: Model, progressCallback: (ProgressInfo) -> ()): string
 	local model = inputModel:Clone()
 	EditableUtils.convertAllToEditables(model)
-	return AvatarCreationService:AutoSetupAvatarAsync(player, model)
+	return AvatarCreationService:AutoSetupAvatarAsync(
+		player,
+		model,
+		progressCallback
+	)
 end
 
 function AvatarUtils.publishAvatar(player:Player, generationId: string)
