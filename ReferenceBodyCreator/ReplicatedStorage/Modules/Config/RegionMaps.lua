@@ -17,6 +17,10 @@ export type Region = {
 local ROBOT_REGIONMAP_SUBPARTS_TEXTURE = "rbxassetid://125433198694119"
 local ROBOT_REGIONMAP_INDIVIDUAL_TEXTURE = "rbxassetid://137458227705708"
 
+local SHIRT_REGIONMAP_TEXTURE = "rbxassetid://121897484607583"
+
+local HAT_REGIONMAP_TEXTURE = "rbxassetid://73042169298476"
+
 export type RegionMap = { [string]: Region }
 
 local RegionMaps: { [string]: RegionMap } = {}
@@ -264,6 +268,90 @@ RegionMaps.RobotIndividualParts = {
 			b = 128,
 		},
 	},
+}
+
+RegionMaps.TShirtSubParts = {
+	["Torso"] = {
+		name = "Torso",
+		meshPartNames = { "Shirt" },
+
+		regionTextureId = SHIRT_REGIONMAP_TEXTURE,
+		regionColor = {
+			r = 255,
+			g = 0,
+			b = 0,
+		},
+	},
+	["LeftArm"] = {
+		name = "LeftArm",
+		meshPartNames = { "Shirt" },
+
+		regionTextureId = SHIRT_REGIONMAP_TEXTURE,
+		regionColor = {
+			r = 0,
+			g = 0,
+			b = 255,
+		},
+	},
+	["RightArm"] = {
+		name = "RightArm",
+		meshPartNames = { "Shirt" },
+
+		regionTextureId = SHIRT_REGIONMAP_TEXTURE,
+		regionColor = {
+			r = 0,
+			g = 255,
+			b = 0,
+		},
+	},
+}
+RegionMaps.TShirtIndividualParts = {
+	["Shirt"] = {
+		name = "Shirt",
+		meshPartNames = { "Shirt" },
+	},
+}
+
+RegionMaps.HatSubParts = {
+	["Brim"] = {
+		name = "Brim",
+		meshPartNames = { "Hat" },
+
+		regionTextureId = HAT_REGIONMAP_TEXTURE,
+		regionColor = {
+			r = 0,
+			g = 0,
+			b = 255,
+		},
+	},
+	["Band"] = {
+		name = "Band",
+		meshPartNames = { "Hat" },
+
+		regionTextureId = HAT_REGIONMAP_TEXTURE,
+		regionColor = {
+			r = 0,
+			g = 255,
+			b = 0,
+		},
+	},
+	["Crown"] = {
+		name = "Crown",
+		meshPartNames = { "Hat" },
+
+		regionTextureId = HAT_REGIONMAP_TEXTURE,
+		regionColor = {
+			r = 255,
+			g = 0,
+			b = 0,
+		},
+	},
+}
+RegionMaps.HatIndividualParts = {
+	["Hat"] = {
+		name = "Hat",
+		meshPartNames = { "Hat" },
+	}
 }
 
 return RegionMaps

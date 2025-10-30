@@ -1,9 +1,29 @@
+local AssetService = game:GetService("AssetService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")
 
 local MeshManipulation = Modules:WaitForChild("MeshManipulation")
 local MeshTypes = require(MeshManipulation:WaitForChild("MeshTypes"))
+local Config = Modules:WaitForChild("Config")
+local Constants = require(Config:WaitForChild("Constants"))
+
+export type MergeKitbashParams = {
+	targetMeshPart: MeshPart,
+	targetEditableMesh: EditableMesh,
+	targetScaleFactor: Vector3,
+
+	kitbashMeshId: string,
+	kitbashTextureId: string,
+
+	positionMarkerCFrame: CFrame,
+	scale: number,
+	rotation: CFrame,
+
+	baseTextureLayer: EditableImage?,
+	atlasSlot: number?,
+	hasDrawnToAtlas: boolean,
+}
 
 local MeshUtils = {}
 
@@ -87,22 +107,22 @@ export type EditableMeshRaycastResult = {
 	barycentricCoordinate: Vector3,
 	editableMesh: EditableMesh,
 	meshPart: MeshPart,
-	scaleFactor: number,
+	scaleFactor: Vector3,
 }
 
 function MeshUtils.CastRayFromCamera(
 	ray,
 	editableMesh: EditableMesh,
 	meshPart,
-	scaleFactor: number
+	scaleFactor: Vector3
 ): (boolean, EditableMeshRaycastResult?)
 	-- Convert to object-space coords that will be used by dynamic mesh raycast
 	local objectSpaceRayOrigin = meshPart.CFrame:PointToObjectSpace(ray.Origin)
 	local objectSpaceRayDirection = meshPart.CFrame:VectorToObjectSpace(ray.Direction).Unit
 
 	-- Scale the coords to match the scale of the dynamic mesh
-	local meshScaleFactor = scaleFactor
-	objectSpaceRayOrigin = objectSpaceRayOrigin * meshScaleFactor
+	objectSpaceRayOrigin = objectSpaceRayOrigin * scaleFactor
+	objectSpaceRayDirection = objectSpaceRayDirection * scaleFactor
 
 	local triangleId, hitPoint, barycentricCoordinate =
 		editableMesh:RaycastLocal(objectSpaceRayOrigin, objectSpaceRayDirection * 100)
@@ -113,11 +133,11 @@ function MeshUtils.CastRayFromCamera(
 	local raycastResult: EditableMeshRaycastResult = {
 		triangleId = triangleId,
 		point = hitPoint,
-		worldPoint = meshPart.CFrame:PointToWorldSpace(hitPoint / meshScaleFactor),
+		worldPoint = meshPart.CFrame:PointToWorldSpace(hitPoint / scaleFactor),
 		barycentricCoordinate = barycentricCoordinate,
 		editableMesh = editableMesh,
 		meshPart = meshPart,
-		scaleFactor = meshScaleFactor,
+		scaleFactor = scaleFactor,
 	}
 	return true, raycastResult
 end
@@ -137,7 +157,7 @@ function MeshUtils.RaycastAll(ray, editableMeshMap: MeshTypes.EditableMeshMap, s
 	local closestDistance = 100000
 	local closestResult = nil
 	for meshPart, editableMesh in pairs(editableMeshMap) do
-		local scaleFactor = scaleFactorMap[meshPart].X
+		local scaleFactor = scaleFactorMap[meshPart]
 		local didHit, result = MeshUtils.CastRayFromCamera(ray, editableMesh, meshPart, scaleFactor)
 
 		if didHit then
@@ -152,6 +172,132 @@ function MeshUtils.RaycastAll(ray, editableMeshMap: MeshTypes.EditableMeshMap, s
 	end
 
 	return closestResult
+end
+
+--  Combine the kitbash piece with the target MeshPart. This involves the following:
+-- 1. Combining geometry via adding vertices/faces
+-- 2. Updating our texture atlas with the kitbash piece texture
+-- 3. Updating the piece's UVs to map to the atlas texture
+function MeshUtils.MergeKitbashPiece(params: MergeKitbashParams): { number }
+	local targetMeshPart = params.targetMeshPart
+	local targetEditableMesh = params.targetEditableMesh
+	local targetScaleFactor = params.targetScaleFactor
+
+	-- Create EditableMesh from kitbash piece
+	local kitbashEditableMesh =
+		AssetService:CreateEditableMeshAsync(Content.fromUri(params.kitbashMeshId), { FixedSize = false })
+
+	local kitbashVertices = kitbashEditableMesh:GetVertices()
+	local kitbashFaces = kitbashEditableMesh:GetFaces()
+
+	-- Get root bone for skinning support
+	local rootBoneId = nil
+	local bones = targetEditableMesh:GetBones()
+	for _, boneId in bones do
+		if targetEditableMesh:GetBoneParent(boneId) == 0 then
+			rootBoneId = boneId
+			break
+		end
+	end
+
+	-- If this piece has not previously been merged and drawn its texture to the
+	-- 2x2 texture atlas, draw the texture to the atlas
+	local hasKitbashTexture = params.kitbashTextureId ~= ""
+	if hasKitbashTexture and not params.hasDrawnToAtlas and params.atlasSlot and params.baseTextureLayer then
+		local atlasSize = params.baseTextureLayer.Size
+		local slotInfo = Constants.ATLAS_SLOTS[params.atlasSlot]
+
+		local kitbashTexture = AssetService:CreateEditableImageAsync(Content.fromUri(params.kitbashTextureId))
+
+		-- Calculate scale to fit slot
+		local slotSize = atlasSize.X / Constants.ATLAS_GRID_SIZE
+		local scaleX = slotSize / kitbashTexture.Size.X
+		local scaleY = slotSize / kitbashTexture.Size.Y
+
+		-- Draw to slot
+		params.baseTextureLayer:DrawImageTransformed(
+			Vector2.new(atlasSize.X * slotInfo.uCenter, atlasSize.Y * slotInfo.vCenter),
+			Vector2.new(scaleX, scaleY),
+			0,
+			kitbashTexture
+		)
+
+		kitbashTexture:Destroy()
+	end
+
+	local rotationDegrees = params.rotation or 0
+	local rotationCFrame = CFrame.Angles(0, 0, math.rad(rotationDegrees))
+	local kitbashToWorld = params.positionMarkerCFrame * rotationCFrame
+	local vertexIdMap = {}
+	local uvIdMap = {}
+	local addedFaceIds = {}
+
+	-- Add vertex geometry to target mesh. Set the bones for skinning as well
+	for _, oldVertexId in kitbashVertices do
+		local localPos = kitbashEditableMesh:GetPosition(oldVertexId)
+		local scaledPos = localPos * params.scale
+		local worldPos = kitbashToWorld:PointToWorldSpace(scaledPos)
+		local targetLocalPos = targetMeshPart.CFrame:PointToObjectSpace(worldPos)
+		local normalizedPos = targetLocalPos * targetScaleFactor
+
+		local newVertexId = targetEditableMesh:AddVertex(normalizedPos)
+		vertexIdMap[oldVertexId] = newVertexId
+
+		if rootBoneId then
+			targetEditableMesh:SetVertexBones(newVertexId, { rootBoneId })
+			targetEditableMesh:SetVertexBoneWeights(newVertexId, { 1 })
+		end
+	end
+
+	-- Copy UVs from kitbash piece and remap them according to the texture atlas
+	if hasKitbashTexture and params.atlasSlot then
+		local kitbashUVs = kitbashEditableMesh:GetUVs()
+		local slotInfo = Constants.ATLAS_SLOTS[params.atlasSlot]
+		local slotScale = 1.0 / Constants.ATLAS_GRID_SIZE
+
+		for _, oldUVId in kitbashUVs do
+			local uvCoord = kitbashEditableMesh:GetUV(oldUVId)
+			local remappedUV =
+				Vector2.new(slotInfo.uOffset + (uvCoord.X * slotScale), slotInfo.vOffset + (uvCoord.Y * slotScale))
+
+			local newUVId = targetEditableMesh:AddUV(remappedUV)
+			uvIdMap[oldUVId] = newUVId
+		end
+	end
+
+	-- Copy faces from kitbash piece
+	for _, oldFaceId in kitbashFaces do
+		local oldVertices = kitbashEditableMesh:GetFaceVertices(oldFaceId)
+		local oldUVs = kitbashEditableMesh:GetFaceUVs(oldFaceId)
+
+		local newVertices = {}
+		local newUVs = {}
+
+		for i, oldVertexId in oldVertices do
+			newVertices[i] = vertexIdMap[oldVertexId]
+		end
+
+		if hasKitbashTexture then
+			for i, oldUVId in oldUVs do
+				newUVs[i] = uvIdMap[oldUVId]
+			end
+		end
+
+		if #newVertices == 3 then
+			local newFaceId = targetEditableMesh:AddTriangle(newVertices[1], newVertices[2], newVertices[3])
+
+			if hasKitbashTexture and #newUVs == 3 then
+				targetEditableMesh:SetFaceUVs(newFaceId, newUVs)
+			end
+
+			table.insert(addedFaceIds, newFaceId)
+		end
+	end
+
+	targetEditableMesh:RemoveUnused()
+	kitbashEditableMesh:Destroy()
+
+	return addedFaceIds
 end
 
 return MeshUtils

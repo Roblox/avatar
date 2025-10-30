@@ -1,17 +1,35 @@
 local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Modules = ReplicatedStorage:WaitForChild("Modules")
+local Config = Modules:WaitForChild("Config")
+local Constants = require(Config:WaitForChild("Constants"))
 
 local CAMERA_FOV = 30
 
 local MAX_CAMERA_DISTANCE = 12
 local MIN_CAMERA_DISTANCE = 1.5
+local MIN_ACCESSORY_CAMERA_DISTANCE = 4
 
 local SCROLL_ZOOM_STEP = -1
 local TOUCH_ZOOM_STEP = -0.05
 
+local ACCESSORY_DISTANCE_SCALE = 3
+local ACCESSORY_ZOOM = 0.85
+local MOBILE_ACCESSORY_PAN_XOFFSET_SCALE = 2
+
 local CameraManager = {}
 CameraManager.__index = CameraManager
 
-local function getCameraDistance(fov, extentsSize)
+local function getMinCameraDistance(creationType)
+	if creationType == Constants.CREATION_TYPES.Accessory then
+		return MIN_ACCESSORY_CAMERA_DISTANCE
+	end
+
+	return MIN_CAMERA_DISTANCE
+end
+
+function CameraManager:GetCameraDistance(fov, extentsSize)
 	local xSize, ySize, zSize = extentsSize.X, extentsSize.Y, extentsSize.Z
 
 	local maxSize = math.max(xSize, ySize)
@@ -19,17 +37,25 @@ local function getCameraDistance(fov, extentsSize)
 	local fovMultiplier = 1 / math.tan(math.rad(fov) / 2)
 	local halfSize = maxSize / 2
 	local distance = (halfSize * fovMultiplier) + (zSize / 2)
-	return math.clamp(distance, MIN_CAMERA_DISTANCE, MAX_CAMERA_DISTANCE)
+	if ySize < 3.0 then
+		distance = distance * ACCESSORY_DISTANCE_SCALE
+	end
+
+	local minCameraDistance = getMinCameraDistance(self.creationType)
+	return math.clamp(distance, minCameraDistance, MAX_CAMERA_DISTANCE)
 end
 
 function CameraManager.new(modelInfo)
 	local self = {}
 	setmetatable(self, CameraManager)
 
+	self.isLocked = false
 	self.model = modelInfo:GetModel()
+	self.creationType = modelInfo:GetCreationType()
 	self.modelCFrame = modelInfo:GetInitialModelCFrame()
+	self.creationType = modelInfo:GetCreationType()
 	self.initialLookVector = self.modelCFrame.lookVector
-	self.initialDistance = getCameraDistance(CAMERA_FOV, self.model:GetExtentsSize())
+	self.initialDistance = self:GetCameraDistance(CAMERA_FOV, self.model:GetExtentsSize())
 	self:ResetCamera()
 	return self
 end
@@ -38,6 +64,10 @@ local function tweenCamera(newCFrame)
 	local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Cubic, Enum.EasingDirection.InOut, 0, false, 0)
 	local tween = TweenService:Create(workspace.CurrentCamera, tweenInfo, { CFrame = newCFrame })
 	tween:Play()
+end
+
+function CameraManager:SetCameraInputLocked(shouldLock: boolean)
+	self.isLocked = shouldLock
 end
 
 function CameraManager:FocusCameraOnParts(affectedMeshParts, position)
@@ -52,12 +82,16 @@ function CameraManager:FocusCameraOnParts(affectedMeshParts, position)
 	local affectedPartsExtentsSize = tempModel:GetExtentsSize()
 	tempModel:Destroy()
 
-	self.cameraDistance = getCameraDistance(CAMERA_FOV, affectedPartsExtentsSize)
+	self.cameraDistance = self:GetCameraDistance(CAMERA_FOV, affectedPartsExtentsSize)
 	local newCFrame = self:CalculateNewCFrame()
 	tweenCamera(newCFrame)
 end
 
 function CameraManager:ZoomToPoint(zoomDelta: number, screenPixelPoint: Vector2?, useTouchStep)
+	if self.isLocked then
+		return
+	end
+
 	local prevCameraDistance = self.cameraDistance
 	local step = if useTouchStep then TOUCH_ZOOM_STEP * zoomDelta else SCROLL_ZOOM_STEP * zoomDelta
 
@@ -117,7 +151,7 @@ function CameraManager:ResetCamera(useTween)
 	end
 
 	self.modelExtentsSize = model:GetExtentsSize()
-	self.cameraDistance = getCameraDistance(CAMERA_FOV, self.modelExtentsSize)
+	self.cameraDistance = self:GetCameraDistance(CAMERA_FOV, self.modelExtentsSize)
 
 	self.cameraDegreesAngle = Vector2.new(0, 0)
 
@@ -178,16 +212,20 @@ function CameraManager:ClampValues()
 	)
 
 	--clamp zoom
-	self.cameraDistance = math.clamp(self.cameraDistance, MIN_CAMERA_DISTANCE, MAX_CAMERA_DISTANCE)
+	self.cameraDistance = math.clamp(self.cameraDistance, getMinCameraDistance(self.creationType), MAX_CAMERA_DISTANCE)
 end
 
 function CameraManager:PanByPixels(pixelDelta)
+	if self.isLocked then
+		return
+	end
+
 	self.cameraPanInPixels = self.cameraPanInPixels + pixelDelta
 	self:ClampValues()
 	self:UpdateCameraPosition()
 end
 
-function CameraManager:PanToRight()
+function CameraManager:PanX(panFromCenterX)
 	local model = self.model
 	if not model then
 		error("Camera Manager did not find a model!")
@@ -199,18 +237,39 @@ function CameraManager:PanToRight()
 	end
 
 	self.modelExtentsSize = model:GetExtentsSize()
-	self.cameraDistance = getCameraDistance(CAMERA_FOV, self.modelExtentsSize)
+	self.cameraDistance = self:GetCameraDistance(CAMERA_FOV, self.modelExtentsSize)
 
 	self.cameraDegreesAngle = Vector2.new(0, 0)
-
-	local absoluteSize = workspace.CurrentCamera.ViewportSize
-	-- move the model to be about a fourth from the edge of the screen
-	local panFromCenterX = -absoluteSize.X / 2 + absoluteSize.X / 4
 
 	self.cameraPanInPixels = Vector2.new(panFromCenterX, 0)
 
 	local newCFrame = self:CalculateNewCFrame()
 	tweenCamera(newCFrame)
+end
+
+function CameraManager:PanToLeft(isMobile: boolean?)
+	local absoluteSize = workspace.CurrentCamera.ViewportSize
+	-- move the model to be about a fourth from the edge of the screen
+	local panFromCenterX = absoluteSize.X / 2 - absoluteSize.X / 4
+	
+	if self.creationType == Constants.CREATION_TYPES.Accessory and isMobile then
+		panFromCenterX *= MOBILE_ACCESSORY_PAN_XOFFSET_SCALE
+	end
+
+	self:PanX(panFromCenterX)
+
+	-- For ease of accessory editing, zoom after panning over
+	if self.creationType == Constants.CREATION_TYPES.Accessory then
+		self.cameraDistance = math.max(
+			getMinCameraDistance(self.creationType),
+			self.cameraDistance * ACCESSORY_ZOOM
+		)
+
+		local newCFrame = self:CalculateNewCFrame()
+		local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Cubic, Enum.EasingDirection.InOut)
+		local tween = TweenService:Create(workspace.CurrentCamera, tweenInfo, { CFrame = newCFrame })
+		tween:Play()
+	end
 end
 
 function CameraManager:Destroy() end

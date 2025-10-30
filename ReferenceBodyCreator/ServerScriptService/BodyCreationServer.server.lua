@@ -7,6 +7,10 @@ local Modules = ReplicatedStorage:WaitForChild("Modules")
 local ModelInfo = require(Modules:WaitForChild("ModelInfo"))
 local Utils = require(Modules:WaitForChild("Utils"))
 local Actions = require(Modules:WaitForChild("Actions"))
+local ResolutionManager = require(Modules:WaitForChild("ResolutionManager"))
+
+local Config = Modules:WaitForChild("Config")
+local Constants = require(Config:WaitForChild("Constants"))
 
 local MeshManipulation = Modules:WaitForChild("MeshManipulation")
 local AccessoryUtils = require(MeshManipulation:WaitForChild("AccessoryUtils"))
@@ -21,15 +25,13 @@ local ShowMessageEvent = Remotes:WaitForChild("ShowMessageEvent")
 local InitializeServerModelEvent = Remotes:WaitForChild("InitializeServerModelEvent")
 local SendActionToServerEvent = Remotes:WaitForChild("SendActionToServerEvent")
 local ResetPlayerModelServerEvent = Remotes:WaitForChild("ResetPlayerModelServer")
+local ResetCompleteEvent = Remotes:WaitForChild("ResetCompleteEvent")
 
--- If you republish this game, you will need to create a new token in the creator dashboard for the new game
 
-local GAME_ID_TOKEN_MAP = {
-	[6812969780] = "6703e42c-6c3f-42fb-8b35-206c345c9a9f",
-	[5113694998] = "fd0639ed-595e-42a9-bdd4-8944840c8f52",
-}
-
-local DEMO_TOKEN = GAME_ID_TOKEN_MAP[game.GameId]
+local ACCESSORY_TO_AVATAR_ASSET_TYPE = {
+	[Enum.AccessoryType.TShirt] = Enum.AvatarAssetType.TShirtAccessory,
+	[Enum.AccessoryType.Hat] = Enum.AvatarAssetType.Hat,
+} 
 
 local PlayerActionQueueMap = {}
 
@@ -44,14 +46,29 @@ local function GetServerModelStorage()
 	return serverModelStorage
 end
 
-local function SetupPlayerEditModel(player, blankName)
+local function ResetPlayerModel(player)
+	local actionQueue = PlayerActionQueueMap[player]
+	PlayerActionQueueMap[player] = nil
+
+	if actionQueue then
+		local playerEditModel: ModelInfo.ModelInfoClass? = actionQueue:GetPlayerModelInfo()
+		if playerEditModel then
+			playerEditModel:Destroy()
+		end
+	end
+
+	ResetCompleteEvent:FireClient(player)
+end
+
+local function SetupPlayerEditModel(player, blankName, resolutionIndex)
 	local blankData = Utils.GetBlankDataByName(blankName)
 	if not blankData then
 		error("BlankData not found for blankName " .. blankName)
 	end
 
 	if PlayerActionQueueMap[player] then
-		error("PlayerActionQueue already exists for player " .. player.Name)
+		warn("PlayerActionQueue already exists for player " .. player.Name)
+		ResetPlayerModel(player)
 	end
 	local actionQueue = ActionQueue.new(player)
 	PlayerActionQueueMap[player] = actionQueue
@@ -59,7 +76,13 @@ local function SetupPlayerEditModel(player, blankName)
 	local model = blankData.sourceModel:Clone()
 	model.Parent = Utils.GetVisualizeServerEdits() and workspace or GetServerModelStorage()
 
+	ResolutionManager.SetResolutionIndex(resolutionIndex)
+
 	local playerEditModel = ModelInfo.new(model, blankData)
+	if playerEditModel:GetCreationType() == Constants.CREATION_TYPES.Body then
+		AttachmentUtils.BuildRigFromAttachments(model)
+		AccessoryUtils.ReapplyLayeredClothing(model)
+	end
 
 	actionQueue:SetTargetModelInfo(playerEditModel)
 
@@ -97,6 +120,57 @@ local function ReceivedActionFromClient(player, action)
 end
 SendActionToServerEvent.OnServerEvent:Connect(ReceivedActionFromClient)
 
+local function ReportCreationResult(player, promptCreationEnum, promptResult, resultMessage)
+	if promptResult == promptCreationEnum["Success"] then
+		print("successfully uploaded, ItemId: ", resultMessage)
+		ShowMessageEvent:FireClient(player, "Successfully uploaded item! ItemId: " .. resultMessage)
+	else
+		print("Received result", promptResult)
+		print("ResultMessage:", resultMessage)
+		ShowMessageEvent:FireClient(
+			player,
+			"Failed to upload item. Result: " .. tostring(promptResult) .. " | Error: " .. resultMessage
+		)
+
+		if promptResult ~= promptCreationEnum["PermissionDenied"] and
+			promptResult ~= promptCreationEnum["Timeout"] then
+			task.spawn(function()
+				-- We throw an error here so that we can see this reported in the error dashboard for the place
+				-- Since the error is in a task.spawn, it won't stop this function from completing
+				error("Failed to upload item. Result Code: " .. tostring(promptResult) .. " | Error: " .. resultMessage)
+			end)
+		end
+	end
+end
+
+local function PublishAvatarAsset(token, player, assetToUpload, avatarAssetType)
+	local complete, result, resultMessage = pcall(function()
+		return AvatarCreationService:PromptCreateAvatarAssetAsync(token, player, assetToUpload, avatarAssetType)
+	end)
+	if complete then
+		ReportCreationResult(player, Enum.PromptCreateAssetResult, result, resultMessage)
+	else
+		print("error")
+		print(result)
+
+		ShowMessageEvent:FireClient(player, "Failed to upload asset. Reason: " .. tostring(result))
+	end
+end
+
+local function PublishAvatar(token,  player, humanoidDescription)
+	local complete, result, resultMessage = pcall(function()
+		return AvatarCreationService:PromptCreateAvatarAsync(token, player, humanoidDescription)
+	end)
+	if complete then
+		ReportCreationResult(player, Enum.PromptCreateAvatarResult, result, resultMessage)
+	else
+		print("error")
+		print(result)
+
+		ShowMessageEvent:FireClient(player, "Failed to upload avatar. Reason: " .. tostring(result))
+	end
+end
+
 local function PublishModel(player)
 	local actionQueue = PlayerActionQueueMap[player]
 	if not actionQueue then
@@ -110,12 +184,13 @@ local function PublishModel(player)
 	playerEditModel:UpdateOutputColorMap()
 
 	local modelToPublish = playerEditModel:GetModel():Clone()
-	local humanoidDescription = modelToPublish:FindFirstChildWhichIsA("HumanoidDescription")
 
 	AccessoryUtils.RevertToOriginalSizes(modelToPublish)
 	AttachmentUtils.RevertToOriginalPositions(modelToPublish)
 
+	local assetToUpload, avatarAssetType, avatarAssetToken
 	for _, meshPart in modelToPublish:GetDescendants() do
+
 		if not meshPart:IsA("MeshPart") then
 			continue
 		end
@@ -123,56 +198,40 @@ local function PublishModel(player)
 		meshPart.Anchored = false
 
 		if meshPart.Parent:IsA("Accessory") then
+			local accessoryType = meshPart.Parent.AccessoryType
+			if accessoryType and ACCESSORY_TO_AVATAR_ASSET_TYPE[accessoryType] then
+				avatarAssetType = ACCESSORY_TO_AVATAR_ASSET_TYPE[accessoryType]
+				local token = Utils.getToken(game.GameId, avatarAssetType)
+				if token then
+					local modelParent = Instance.new("Model")
+					meshPart.Parent.Parent = modelParent
+					assetToUpload = meshPart.Parent
+					avatarAssetToken = token
+					meshPart.Parent.Name = "AccessoryForUpload"
+				end
+			end
 			meshPart.Name = "Handle"
+		end
+
+		-- Remove welds for layered accessories for publish
+		local weldConstraint = meshPart:FindFirstChildOfClass("WeldConstraint")
+		if weldConstraint then
+			weldConstraint:Destroy()
 		end
 	end
 
-	local complete, result, resultMessage = pcall(function()
-		return AvatarCreationService:PromptCreateAvatarAsync(DEMO_TOKEN, player, humanoidDescription)
-	end)
-	if complete then
-		if result == Enum.PromptCreateAvatarResult.Success then
-			print("successfully uploaded, AssetId: ", resultMessage)
-			ShowMessageEvent:FireClient(player, "Successfully uploaded avatar! OutfitId: " .. resultMessage)
-		else
-			print("Received result", result)
-			print("ResultMessage:", resultMessage)
-			ShowMessageEvent:FireClient(
-				player,
-				"Failed to upload avatar. Result: " .. tostring(result) .. " | Error: " .. resultMessage
-			)
-
-			if result ~= Enum.PromptCreateAvatarResult.PermissionDenied and result ~= Enum.PromptCreateAvatarResult.Timeout then
-				task.spawn(function()
-					-- We throw an error here so that we can see this reported in the error dashboard for the place
-					-- Since the error is in a task.spawn, it won't stop this function from completing
-					error("Failed to upload avatar. Result Code: " .. tostring(result) .. " | Error: " .. resultMessage)
-				end)
-			end
-		end
+	if assetToUpload then
+		PublishAvatarAsset(avatarAssetToken, player, assetToUpload, avatarAssetType)
 	else
-		print("error")
-		print(result)
-
-		ShowMessageEvent:FireClient(player, "Failed to upload avatar. Reason: " .. tostring(result))
+		local humanoidDescription = modelToPublish:FindFirstChildWhichIsA("HumanoidDescription")
+		local bodyToken = Utils.getToken(game.GameId)
+		PublishAvatar(bodyToken, player, humanoidDescription)
 	end
 end
 
 BuyRemoteEvent.OnServerEvent:Connect(function(player)
 	PublishModel(player)
 end)
-
-local function ResetPlayerModel(player)
-	local actionQueue = PlayerActionQueueMap[player]
-	PlayerActionQueueMap[player] = nil
-
-	if actionQueue then
-		local playerEditModel: ModelInfo.ModelInfoClass? = actionQueue:GetPlayerModelInfo()
-		if playerEditModel then
-			playerEditModel:Destroy()
-		end
-	end
-end
 
 ResetPlayerModelServerEvent.OnServerEvent:Connect(ResetPlayerModel)
 

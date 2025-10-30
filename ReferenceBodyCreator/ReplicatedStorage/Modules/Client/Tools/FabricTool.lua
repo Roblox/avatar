@@ -80,27 +80,6 @@ function FabricTool:ApplyColor(color, isFinalInput)
 end
 
 function FabricTool:ClearAll()
-	if self.selectedRegionName then
-		local clearActionMetadata: ImageEditActions.ClearRegionActionMetadata = {
-			regionName = self.selectedRegionName,
-		}
-
-		local clearAction = Actions.CreateNewAction(Actions.ActionTypes.ClearRegion, clearActionMetadata)
-
-		Actions.ExecuteAction(self.modelInfo, clearAction)
-
-		SendActionToServerEvent:FireServer(clearAction)
-
-		local textureInfo: TextureInfo.TextureInfoClass = self.modelInfo:GetTextureInfo()
-		local region: TextureInfo.Region = textureInfo:GetRegion(self.selectedRegionName)
-		local uniqueLayersForMeshParts = textureInfo:GetUniqueLayerMapForMeshPartNames(region.meshPartNames)
-
-		for meshPart, _ in uniqueLayersForMeshParts do
-			textureInfo:UpdateOutputColorMap(meshPart)
-		end
-		return
-	end
-
 	local textureInfo: TextureInfo.TextureInfoClass = self.modelInfo:GetTextureInfo()
 
 	local uniqueLayerMap = textureInfo:GetUniqueLayerMap()
@@ -120,7 +99,7 @@ function FabricTool:ClearAll()
 end
 
 function FabricTool:SetSelectedRegion(regionName: string)
-	if regionName == "All" then
+	if regionName and string.find(regionName, "Model") then
 		self.selectedRegionName = nil
 		return
 	end

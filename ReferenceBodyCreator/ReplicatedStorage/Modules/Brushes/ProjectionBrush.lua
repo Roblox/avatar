@@ -1,5 +1,3 @@
-local AssetService = game:GetService("AssetService")
-
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")

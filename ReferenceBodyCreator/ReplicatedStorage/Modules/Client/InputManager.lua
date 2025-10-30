@@ -201,7 +201,7 @@ function InputManager:InitializeCameraInteractions()
 					self.lastDragPosition = inputObject.Position
 				end
 
-				self.modelDisplay:RotateModelFromPixels(delta.X)
+				self.modelDisplay:RotateModelFromPixels(delta.X, -delta.Y)
 			end
 		end
 
@@ -290,8 +290,8 @@ end
 function InputManager:SetUpGamepad()
 	ContextActionService:UnbindAction("RotateAndZoom")
 	ContextActionService:BindAction("RotateAndZoom", self.storeInput, false, Enum.KeyCode.Thumbstick2)
-	local rotateByDegrees = function(degrees)
-		self.modelDisplay:RotateModelFromDegrees(degrees)
+	local rotateByDegrees = function(degreesX, degreesY)
+		self.modelDisplay:RotateModelFromDegrees(degreesX, degreesY)
 	end
 	local zoomStraight = function(zoomDelta)
 		self.cameraManager:ZoomToPoint(-zoomDelta, self.modelDisplay:GetScreenPosition())

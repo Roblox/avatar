@@ -1,10 +1,12 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local GamepadService = game:GetService("GamepadService")
+local AvatarCreationService = game:GetService("AvatarCreationService")
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")
 
 local Config = Modules:WaitForChild("Config")
 local BlanksData = require(Config:WaitForChild("BlanksData"))
+local Constants = require(Config:WaitForChild("Constants"))
 
 -- deadzone is the distance from the center of the thumbstick that the thumbstick has to move before it registers
 local THUMBSTICK_DEADZONE = 0.2
@@ -461,7 +463,7 @@ end
 utils.rotateAndZoom = function(
 	inputObject: InputObject,
 	deltaTime: number,
-	rotateByDegrees: ((number) -> ())?,
+	rotateByDegrees: ((number, number) -> ())?,
 	zoomStraight: ((number) -> ())?
 )
 	local stickInput = utils.normalizeStickByDeadzone(Vector2.new(inputObject.Position.X, inputObject.Position.Y))
@@ -469,13 +471,56 @@ utils.rotateAndZoom = function(
 		return
 	end
 
-	if rotateByDegrees and math.abs(stickInput.X) > MIN_AXIS_THRESHOLD then
+	if rotateByDegrees and (math.abs(stickInput.X) > MIN_AXIS_THRESHOLD or math.abs(stickInput.Y) > MIN_AXIS_THRESHOLD) then
 		local radiansToDegrees = 180 / math.pi
-		rotateByDegrees(deltaTime * stickInput.X * MAX_STICK_ANGULAR_SPEED * radiansToDegrees)
+		local degreesX = deltaTime * stickInput.X * MAX_STICK_ANGULAR_SPEED * radiansToDegrees
+		local degreesY = deltaTime * stickInput.Y * MAX_STICK_ANGULAR_SPEED * radiansToDegrees
+		rotateByDegrees(degreesX, degreesY)
 	end
 
 	if zoomStraight and math.abs(stickInput.Y) > MIN_AXIS_THRESHOLD then
 		zoomStraight(deltaTime * -stickInput.Y * MAX_ZOOM_SPEED)
+	end
+end
+
+--[[
+    Get a publish token for a given universeId.
+    If assetType is passed, returns the accessory token for that type (if it exists).
+    Otherwise returns the body token for the universe.
+    Returns nil if no matching token is found.
+]]
+utils.getToken = function(universeId, avatarAssetType)
+	local universeEntry = Constants.TOKENS[universeId]
+    if not universeEntry then
+        return nil
+    end
+
+    if avatarAssetType then
+        return universeEntry.accessories and universeEntry.accessories[avatarAssetType] or nil
+    else
+        return universeEntry.body
+    end
+end
+
+
+--[[
+	Given a creation token, return the expected price for a creation
+	from that token. If we fail to get a result, instead return 0 which
+	will indicate to the ui to show "Publish" on the Buy Button.
+]]
+utils.getPriceForCreation = function(token)
+	local complete, result = pcall(function()
+		return AvatarCreationService:GetBatchTokenDetailsAsync({token})
+	end)
+	if complete then
+		local tokenData = result[1]
+		if tokenData then
+			return tokenData.Price or 0
+		else
+			return 0
+		end
+	else
+		return 0
 	end
 end
 
@@ -496,6 +541,60 @@ end
 
 function utils.isVirtualCursor(userInputType: Enum.UserInputType): boolean
 	return utils.isGamepadInputType(userInputType) and GamepadService.GamepadCursorEnabled
+end
+
+-- Simple wrapper for adding tags to UI components for style sheet
+function utils.AddStyleTag(component: Instance, tag: string)
+	if not tag then
+		-- Body creation client will capture the warning produced by the AddTag
+		-- method, so this gives us a bit more info.
+		warn(`Cannot tag {component.Name}: tag is nil`)
+	else
+		component:AddTag(tag)
+	end
+end
+
+function utils.RemoveStyleTag(component: Instance, tag: string)
+	if not tag then
+		-- Body creation client will capture the warning produced by the
+		-- RemoveTag method, so this gives us a bit more info.
+		warn(`Cannot untag {component.Name}: tag is nil`)
+	else
+		component:RemoveTag(tag)
+	end
+end
+
+function utils.isValidDraggingInput(input: InputObject)
+	return (
+		input.UserInputType == Enum.UserInputType.Touch
+		or input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.MouseMovement
+	)
+end
+
+function utils.getMousePositionScaleOnComponent(component: GuiObject, mousePosition: Vector3): Vector2
+	local distanceFromLeft = mousePosition.X - component.AbsolutePosition.X
+	local mousePositionXScale = math.clamp(distanceFromLeft / component.AbsoluteSize.X, 0, 1)
+
+	local distanceFromTop = mousePosition.Y - component.AbsolutePosition.Y
+	local mousePositionYScale = math.clamp(distanceFromTop / component.AbsoluteSize.Y, 0, 1)
+
+	return Vector2.new(mousePositionXScale, mousePositionYScale)
+end
+
+function utils.getBuyButtonString(creationPrice)
+	if creationPrice and creationPrice > 0 then
+		return (Constants.ROBUX_ICON .. " " .. creationPrice)
+	else
+		return "Publish"
+	end
+end
+
+function utils.getIsMobile(screenGui: ScreenGui)
+	if not screenGui then
+		return false
+	end
+	return screenGui.AbsoluteSize.X <= Constants.MOBILE_WIDTH_CUTOFF and screenGui.AbsoluteSize.Y <= Constants.MOBILE_WIDTH_CUTOFF
 end
 
 return utils

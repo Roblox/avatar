@@ -3,6 +3,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")
 
+local ResolutionManager = require(Modules:WaitForChild("ResolutionManager"))
+
 local Config = Modules:WaitForChild("Config")
 local BlanksData = require(Config:WaitForChild("BlanksData"))
 local Constants = require(Config:WaitForChild("Constants"))
@@ -17,7 +19,15 @@ type LayerInfo = {
 	originalTextureId: string,
 	inputLayers: { SingleLayer },
 	outputEditableImage: EditableImage,
-	reservedBrushEditableImage : EditableImage
+	reservedBrushEditableImage: EditableImage,
+	kitbashAtlasInfo: {
+		originalTextureSize: Vector2,
+		atlasSize: Vector2,
+		accessoryUOffset: number,
+		accessoryUScale: number,
+		kitbashUOffset: number,
+		kitbashUScale: number,
+	}?,
 }
 
 type ModelTextureInfo = {
@@ -39,7 +49,43 @@ local function DoMergeDownLayers(layerInfo: LayerInfo)
 	end
 end
 
-local function SetupModelTextures(model: Model): ModelTextureInfo
+function TextureInfo:CreateScaledEditableImage(imageContent)
+	local originalImage = AssetService:CreateEditableImageAsync(imageContent)
+	if not originalImage then
+		self:ThrowMemoryError()
+	end
+
+	local targetSize = ResolutionManager.GetCurrentResolution()
+
+	if originalImage.Size.X <= targetSize.X and originalImage.Size.Y <= targetSize.Y then
+		return originalImage
+	end
+
+	local scaledImage = AssetService:CreateEditableImage({
+		Size = targetSize,
+	})
+	if not scaledImage then
+		originalImage:Destroy()
+		self:ThrowMemoryError()
+	end
+
+	local scale = originalImage.Size.X / targetSize.X
+	if originalImage.Size.Y / targetSize.Y > scale then
+		scale = originalImage.Size.Y / targetSize.Y
+	end
+
+	scaledImage:DrawImageTransformed(
+		Vector2.new(scaledImage.Size.X / 2, scaledImage.Size.Y / 2),
+		Vector2.new(1 / scale, 1 / scale),
+		0,
+		originalImage
+	)
+	originalImage:Destroy()
+
+	return scaledImage
+end
+
+function TextureInfo:SetupModelTextures(model: Model): ModelTextureInfo
 	local newModelInfo: ModelTextureInfo = {}
 
 	local textureIdToLayerMap = {}
@@ -50,6 +96,11 @@ local function SetupModelTextures(model: Model): ModelTextureInfo
 		end
 
 		if descendant.Name == "PrimaryPart" then
+			continue
+		end
+
+		-- Only include parts of the model that we want to edit.
+		if not self.individualPartsNames[descendant.name] then
 			continue
 		end
 
@@ -73,33 +124,72 @@ local function SetupModelTextures(model: Model): ModelTextureInfo
 			continue
 		end
 
-		local baseTexture = AssetService:CreateEditableImageAsync(Content.fromUri(descendant.TextureID))
+		local baseTexture = self:CreateScaledEditableImage(Content.fromUri(descendant.TextureID))
 		if not baseTexture then
-			error(Constants.FAILED_TO_CREATE_EI_MSG)
+			self:ThrowMemoryError()
 		end
-
+		table.insert(self.pendingEditableImages, baseTexture)
 		local baseTextureLayer: SingleLayer = {
 			name = "BaseTexture",
 			editableImage = baseTexture,
 		}
+		local originalTextureSize = baseTexture.Size
+
+		-- If this creation supports kitbashing, set up the texture atlas.
+		-- The texture atlas is a 2x2 grid where the target creation accessory's
+		-- texture occupies the top left of the atlas. Whereas the rest of the atlas
+		-- grid entries are saved for textures of kitbash pieces to be attached
+		local accommodateKitbash = self.creationType == Constants.CREATION_TYPES.Accessory
+		local fullTextureSize = originalTextureSize
+		if accommodateKitbash then
+			fullTextureSize = Vector2.new(
+				originalTextureSize.X * Constants.ATLAS_GRID_SIZE,
+				originalTextureSize.Y * Constants.ATLAS_GRID_SIZE
+			)
+			local kitbashAtlas = AssetService:CreateEditableImage({
+				Size = fullTextureSize,
+			})
+			if not kitbashAtlas then
+				self:ThrowMemoryError()
+			end
+			table.insert(self.pendingEditableImages, kitbashAtlas)
+
+			kitbashAtlas:DrawImage(Vector2.new(0, 0), baseTexture, Enum.ImageCombineType.BlendSourceOver)
+
+			baseTextureLayer.editableImage = kitbashAtlas
+
+			baseTexture:Destroy()
+		end
 
 		local outputTexture = AssetService:CreateEditableImage({
-			Size = baseTexture.Size,
+			Size = fullTextureSize,
 		})
 		if not outputTexture then
-			error(Constants.FAILED_TO_CREATE_EI_MSG)
+			self:ThrowMemoryError()
 		end
+		table.insert(self.pendingEditableImages, outputTexture)
 
-		local brushLayerEI = AssetService:CreateEditableImage({ Size = baseTexture.Size })
+		local brushLayerEI = AssetService:CreateEditableImage({ Size = fullTextureSize })
 		if not brushLayerEI then
-			error(Constants.FAILED_TO_CREATE_EI_MSG)
+			self:ThrowMemoryError()
 		end
+		table.insert(self.pendingEditableImages, brushLayerEI)
 
 		local newLayerInfo: LayerInfo = {
 			inputLayers = { baseTextureLayer },
 			outputEditableImage = outputTexture,
 			originalTextureId = descendant.TextureID,
-			reservedBrushEditableImage = brushLayerEI
+			reservedBrushEditableImage = brushLayerEI,
+			kitbashAtlasInfo = if accommodateKitbash
+				then {
+					originalTextureSize = fullTextureSize,
+					atlasSize = fullTextureSize,
+					accessoryUOffset = 0.0,
+					accessoryUScale = 1.0 / Constants.ATLAS_GRID_SIZE,
+					kitbashUOffset = 1.0 / Constants.ATLAS_GRID_SIZE,
+					kitbashUScale = 1.0 / Constants.ATLAS_GRID_SIZE,
+				}
+				else nil,
 		}
 
 		textureIdToLayerMap[descendant.TextureID] = newLayerInfo
@@ -126,7 +216,7 @@ export type Region = {
 
 export type RegionMap = { [string]: Region }
 
-local function GetAllRegionBuffers(sourceRegionMap: RegionMaps.RegionMap): { [string]: buffer }
+function TextureInfo:GetAllRegionBuffers(sourceRegionMap: RegionMaps.RegionMap): { [string]: buffer }
 	local allRegionBuffers = {}
 
 	for _, region: RegionMaps.Region in pairs(sourceRegionMap) do
@@ -137,9 +227,9 @@ local function GetAllRegionBuffers(sourceRegionMap: RegionMaps.RegionMap): { [st
 
 			if allRegionBuffers[region.regionTextureId] == nil then
 				local editableImage: EditableImage =
-					AssetService:CreateEditableImageAsync(Content.fromUri(region.regionTextureId))
+					self:CreateScaledEditableImage(Content.fromUri(region.regionTextureId))
 				if not editableImage then
-					error(Constants.FAILED_TO_CREATE_EI_MSG)
+					self:ThrowMemoryError()
 				end
 				allRegionBuffers[region.regionTextureId] =
 					editableImage:ReadPixelsBuffer(Vector2.zero, editableImage.Size)
@@ -151,14 +241,14 @@ local function GetAllRegionBuffers(sourceRegionMap: RegionMaps.RegionMap): { [st
 	return allRegionBuffers
 end
 
-local function SetupRegionMap(blankData: BlanksData.BlankData): RegionMap
+function TextureInfo:SetupRegionMap(blankData: BlanksData.BlankData): RegionMap
 	if not blankData.regionMapSubParts then
 		return {}
 	end
 
 	local newRegionMap: RegionMap = {}
 
-	local allRegionBuffers = GetAllRegionBuffers(blankData.regionMapSubParts)
+	local allRegionBuffers = self:GetAllRegionBuffers(blankData.regionMapSubParts)
 
 	for regionName, sourceRegion: RegionMaps.Region in pairs(blankData.regionMapSubParts) do
 		local newRegion: Region = {
@@ -174,7 +264,7 @@ local function SetupRegionMap(blankData: BlanksData.BlankData): RegionMap
 	return newRegionMap
 end
 
-local function SetupMeshPartToRegionMap(regionMap: RegionMap)
+function TextureInfo:SetupMeshPartToRegionMap(regionMap: RegionMap)
 	local allSubRegionBuffers = {}
 
 	local MeshPartToRegionMap = {}
@@ -182,9 +272,9 @@ local function SetupMeshPartToRegionMap(regionMap: RegionMap)
 		if regionData.regionTextureId ~= nil then
 			if allSubRegionBuffers[regionData.regionTextureId] == nil then
 				local editableImage: EditableImage =
-					AssetService:CreateEditableImageAsync(Content.fromUri(regionData.regionTextureId))
+					self:CreateScaledEditableImage(Content.fromUri(regionData.regionTextureId))
 				if not editableImage then
-					error(Constants.FAILED_TO_CREATE_EI_MSG)
+					self:ThrowMemoryError()
 				end
 				allSubRegionBuffers[regionData.regionTextureId] =
 					editableImage:ReadPixelsBuffer(Vector2.zero, editableImage.Size)
@@ -204,24 +294,42 @@ local function SetupMeshPartToRegionMap(regionMap: RegionMap)
 	return MeshPartToRegionMap
 end
 
+function TextureInfo:DestroyAllTrackedImages()
+	for _, ei in ipairs(self.pendingEditableImages) do
+		if ei then
+			ei:Destroy()
+		end
+	end
+	self.pendingEditableImages = {}
+end
+
+function TextureInfo:ThrowMemoryError()
+	self:DestroyAllTrackedImages()
+	error(Constants.FAILED_TO_CREATE_EI_MSG)
+end
+
 function TextureInfo.new(model, blankData: BlanksData.BlankData)
 	local self = setmetatable({}, TextureInfo)
 
-	self.regionMap = SetupRegionMap(blankData)
-	self.perMeshPartRegionMap = SetupMeshPartToRegionMap(blankData.regionMapIndividual)
+	self.pendingEditableImages = {}
+
+	self.individualPartsNames = blankData.individualPartsNames
+	self.regionMap = self:SetupRegionMap(blankData)
+	self.perMeshPartRegionMap = self:SetupMeshPartToRegionMap(blankData.regionMapIndividual)
+	self.creationType = blankData.creationType
 
 	self.reservedStickerEditableImageMap = {}
-	for i=1,Constants.MAX_STICKER_LAYERS do
-		local stickerLayerName = Constants.STICKER_LAYER_PREFIX..i
-		-- TODO: don't hardcode the size
-		local stickerEI = AssetService:CreateEditableImage({Size = Vector2.new(1024,1024)})
+	for i = 1, Constants.MAX_STICKER_LAYERS do
+		local stickerLayerName = Constants.STICKER_LAYER_PREFIX .. i
+		local stickerEI = AssetService:CreateEditableImage({ Size = ResolutionManager.GetCurrentResolution() })
 		if not stickerEI then
-			error(Constants.FAILED_TO_CREATE_EI_MSG)
+			self:ThrowMemoryError()
 		end
+		table.insert(self.pendingEditableImages, stickerEI)
 		self.reservedStickerEditableImageMap[stickerLayerName] = stickerEI
 	end
 
-	self.modelTextureInfo = SetupModelTextures(model)
+	self.modelTextureInfo = self:SetupModelTextures(model)
 
 	self.lastCreatedEditableImage = nil
 	self.lastCreatedEditableImageTextureId = nil
@@ -304,10 +412,20 @@ function TextureInfo:GetBaseLayer(meshPart): EditableImage
 	return layerInfo.inputLayers[1].editableImage
 end
 
-function TextureInfo:GetTextureSize(meshPart): Vector2
-	local layerInfo: LayerInfo = self.modelTextureInfo[meshPart]
+function TextureInfo:GetTextureSize(meshPart: MeshPart): Vector2
+	local layerInfo = self.modelTextureInfo[meshPart]
 
-	return layerInfo.outputEditableImage.Size
+	local fullTextureSize = layerInfo.outputEditableImage.Size
+
+	-- For accessories with kitbash atlas, brushes should only draw in the accessory slot
+	if layerInfo.kitbashAtlasInfo then
+		return Vector2.new(
+			math.floor(fullTextureSize.X / Constants.ATLAS_GRID_SIZE),
+			math.floor(fullTextureSize.Y / Constants.ATLAS_GRID_SIZE)
+		)
+	end
+
+	return fullTextureSize
 end
 
 -- Returns the layer and a boolean indicating if the layer was created
@@ -325,6 +443,12 @@ function TextureInfo:GetOrCreateLayer(meshPart, layerName: string): (EditableIma
 		newLayer = layerInfo.reservedBrushEditableImage
 	else
 		newLayer = self.reservedStickerEditableImageMap[layerName]
+		if newLayer.Size ~= layerInfo.outputEditableImage.Size then
+			newLayer:Destroy()
+			newLayer = AssetService:CreateEditableImage({ Size = layerInfo.outputEditableImage.Size })
+			assert(newLayer, "Budget should be sufficient to create sticker layer")
+			self.reservedStickerEditableImageMap[layerName] = newLayer
+		end
 	end
 
 	table.insert(layerInfo.inputLayers, {
@@ -348,6 +472,10 @@ end
 
 function TextureInfo:HasLayer(meshPart, layerName: string): boolean
 	local layerInfo: LayerInfo = self.modelTextureInfo[meshPart]
+
+	if not layerInfo then
+		return false
+	end
 
 	for _, layer in layerInfo.inputLayers do
 		if layer.name == layerName then
