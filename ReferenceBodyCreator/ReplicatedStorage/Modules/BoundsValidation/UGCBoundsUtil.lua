@@ -6,7 +6,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")
-local Utils = require(Modules:WaitForChild("Utils"))
 
 local BoundsValidation = Modules:WaitForChild("BoundsValidation")
 local BoundsCalculator = require(BoundsValidation:WaitForChild("BoundsCalculator"))

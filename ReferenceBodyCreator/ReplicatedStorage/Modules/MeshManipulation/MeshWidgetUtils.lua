@@ -429,7 +429,11 @@ function MeshWidgetUtils.GetDeformedMeshData(
 				currentDeformedPos = vertexPos
 			end
 
+			-- We transform the cage vertex into MeshPart space for deformation calculations
+			vertexPos = meshInfo.cageInfo.cageOrigin * vertexPos
 			local deformedPos = DeformSingleVertex(vertexPos, widgetData, startPosition, currentPosition)
+
+			-- We don't need to transform back since we are getting the diff caused by the deformation here
 			local diff: Vector3 = deformedPos - vertexPos
 			deformedPositions[vertexId] = currentDeformedPos + diff
 		end

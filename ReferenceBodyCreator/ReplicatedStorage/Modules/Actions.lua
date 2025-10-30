@@ -33,6 +33,9 @@ Actions.ActionTypes = {
 	-- Mesh Edit Actions
 	UpdateWidgetPosition = "UpdateWidgetPosition",
 	UpdateAttachmentsPositions = "UpdateAttachmentsPositions",
+	MergeKitbashPiece = "MergeKitbashPiece",
+	UnmergeKitbashPiece = "UnmergeKitbashPiece",
+	UpdateDeformedEditableMeshes = "UpdateDeformedEditableMeshes",
 }
 
 local ActionProcessorMap = {
@@ -53,6 +56,9 @@ local ActionProcessorMap = {
 	-- Mesh Edit Actions
 	[Actions.ActionTypes.UpdateWidgetPosition] = MeshEditActions.UpdateWidgetPositionAction,
 	[Actions.ActionTypes.UpdateAttachmentsPositions] = MeshEditActions.UpdateAttachmentsPositionsAction,
+	[Actions.ActionTypes.MergeKitbashPiece] = MeshEditActions.MergeKitbashPieceAction,
+	[Actions.ActionTypes.UnmergeKitbashPiece] = MeshEditActions.UnmergeKitbashPieceAction,
+	[Actions.ActionTypes.UpdateDeformedEditableMeshes] = MeshEditActions.UpdateDeformedEditableMeshesAction,
 }
 
 function Actions.CreateNewAction(actionType, actionMetaData)

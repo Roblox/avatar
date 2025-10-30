@@ -30,7 +30,13 @@ function TextureUtils.DrawCircleBetweenPoints(
 		local interPosition = oldPosition:Lerp(newPosition, i / distBetween)
 		interPosition = Vector2.new(math.floor(interPosition.X), math.floor(interPosition.Y))
 
-		editableImage:DrawCircle(interPosition, brushSize, brushColor, brushTransparency, Enum.ImageCombineType.Overwrite)
+		editableImage:DrawCircle(
+			interPosition,
+			brushSize,
+			brushColor,
+			brushTransparency,
+			Enum.ImageCombineType.Overwrite
+		)
 	end
 end
 
@@ -140,13 +146,7 @@ function TextureUtils.CreateAndSetupProjectionBrushTexturesAndConfigs(
 		Enum.ImageCombineType.Overwrite
 	)
 
-	lineTexture:DrawRectangle(
-		Vector2.zero,
-		lineTexture.Size,
-		penColor,
-		targetAlpha,
-		Enum.ImageCombineType.Overwrite
-	)
+	lineTexture:DrawRectangle(Vector2.zero, lineTexture.Size, penColor, targetAlpha, Enum.ImageCombineType.Overwrite)
 
 	local circleBrushConfig: BrushConfig = {
 		Decal = circleTexture,
@@ -173,7 +173,7 @@ export type ProjectionBrushComputeResult = {
 	projectorCFrame: CFrame,
 	projectorBrushSize: number,
 	castedCenterPointOffSet: Vector3,
-	castedDeltaVecLength: number
+	castedDeltaVecLength: number,
 }
 
 function TextureUtils.GenerateProjectionBrushPoints(
@@ -207,6 +207,74 @@ function TextureUtils.GenerateProjectionBrushPoints(
 	}
 
 	return projectionBrushComputeResult
+end
+
+-- Given a larger region map and a smaller color map, and a position, check if
+-- any of the pixels on the region map corresponding to the position on the
+-- color map match the region we want to edit.
+-- Used in RecolorRegionAction.
+function TextureUtils.WriteBufferForLargerRegionMap(
+	colorMapSize,
+	regionPixelsBuffer,
+	currentPixelsBuffer,
+	regionColor,
+	actionColor
+)
+	local regionR255 = regionColor.r
+	local regionG255 = regionColor.g
+	local regionB255 = regionColor.b
+
+	local colorR255 = actionColor.R * 255
+	local colorG255 = actionColor.G * 255
+	local colorB255 = actionColor.B * 255
+
+	local currentWidth, currentHeight = colorMapSize.X, colorMapSize.Y
+	local regionTotalPixels = buffer.len(regionPixelsBuffer) / 4
+	local regionSize = math.sqrt(regionTotalPixels)
+	local scaleX = regionSize / currentWidth
+	local scaleY = regionSize / currentHeight
+
+	for y = 0, currentHeight - 1 do
+		for x = 0, currentWidth - 1 do
+			local currentPos = ((y * currentWidth) + x) * 4
+			local matchFound = false
+
+			-- Calculate the positions in the region buffer for this pixel
+			local regionStartX = math.floor(x * scaleX)
+			local regionStartY = math.floor(y * scaleY)
+			local regionEndX = math.floor((x + 1) * scaleX)
+			local regionEndY = math.floor((y + 1) * scaleY)
+
+			-- For each pixel in the smaller texture, check the corresponding area in the large texture
+			for regionY = regionStartY, regionEndY - 1 do
+				for regionX = regionStartX, regionEndX - 1 do
+					local regionPos = ((regionY * regionSize) + regionX) * 4
+
+					if regionPos >= 0 and regionPos < buffer.len(regionPixelsBuffer) - 3 then
+						-- Check if this pixel in the region matches the target color
+						if
+							buffer.readu8(regionPixelsBuffer, regionPos) == regionR255
+							and buffer.readu8(regionPixelsBuffer, regionPos + 1) == regionG255
+							and buffer.readu8(regionPixelsBuffer, regionPos + 2) == regionB255
+						then
+							matchFound = true
+							break
+						end
+					end
+				end
+
+				if matchFound then
+					break
+				end
+			end
+			if matchFound then
+				-- Recolor the pixel in the current buffer if it maps to any corresponding region pixel
+				buffer.writeu8(currentPixelsBuffer, currentPos, colorR255)
+				buffer.writeu8(currentPixelsBuffer, currentPos + 1, colorG255)
+				buffer.writeu8(currentPixelsBuffer, currentPos + 2, colorB255)
+			end
+		end
+	end
 end
 
 return TextureUtils

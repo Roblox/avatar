@@ -21,8 +21,12 @@ export type CageInfo = {
 	initialVertexPositionsMap: {
 		[number]: Vector3,
 	},
+	cageOrigin: CFrame,
 
 	initialSize: Vector3,
+
+	-- Fields for WrapLayer only
+	isWrapLayer: boolean?,
 }
 
 export type MeshInfo = {
@@ -56,7 +60,7 @@ local function SetupBodyPart(meshPart: MeshPart, wrapTarget: WrapTarget): MeshIn
 		AssetService:CreateEditableMeshAsync(Content.fromUri(wrapTarget.CageMeshId), {
 			FixedSize = true,
 		})
-	wrapDeformer:SetCageMeshContent(Content.fromObject(cageEditableMesh))
+	wrapDeformer:SetCageMeshContent(Content.fromObject(cageEditableMesh), wrapTarget.CageOrigin)
 
 	local editableMesh: EditableMesh = wrapDeformer:CreateEditableMeshAsync()
 
@@ -76,6 +80,8 @@ local function SetupBodyPart(meshPart: MeshPart, wrapTarget: WrapTarget): MeshIn
 
 			-- Map of vertex id to initial vertex position
 			initialVertexPositionsMap = initialCageVertexPositions,
+			cageOrigin = wrapTarget.CageOrigin,
+
 			initialSize = initialCageSize,
 
 			deformedEditableMeshDirty = false,
@@ -89,10 +95,28 @@ local function SetupBodyPart(meshPart: MeshPart, wrapTarget: WrapTarget): MeshIn
 	return meshInfo
 end
 
-local function SetupRigidMesh(meshPart: MeshPart): MeshInfo
+-- When setting up a MeshPart to support kitbashing, we set up a
+-- texture atlas as its TextureContent so we can easily add textures
+-- of kitbashed pieces. This means the UVs must be remapped to the top
+-- left grid space of the atlas
+local function RemapUVsForKitbashAtlas(editableMesh: EditableMesh)
+	local uvs = editableMesh:GetUVs()
+	for _, uvId in uvs do
+		local uvCoord = editableMesh:GetUV(uvId)
+		local remappedUV = Vector2.new(uvCoord.X / Constants.ATLAS_GRID_SIZE, uvCoord.Y / Constants.ATLAS_GRID_SIZE)
+		editableMesh:SetUV(uvId, remappedUV)
+	end
+end
+
+local function SetupRigidMesh(meshPart: MeshPart, creationType: string): MeshInfo
 	local editableMesh = AssetService:CreateEditableMeshAsync(Content.fromUri(meshPart.MeshId), {
-		FixedSize = true,
+		FixedSize = false,
 	})
+
+	if creationType == Constants.CREATION_TYPES.Accessory then
+		RemapUVsForKitbashAtlas(editableMesh)
+	end
+
 	local newMeshPart = AssetService:CreateMeshPartAsync(Content.fromObject(editableMesh))
 
 	newMeshPart.Size = meshPart.Size
@@ -113,7 +137,68 @@ local function SetupRigidMesh(meshPart: MeshPart): MeshInfo
 	return meshInfo
 end
 
-local function SetupModelMeshes(model: Model): ModelMeshInfo
+local function SetupLayeredClothingPart(meshPart: MeshPart, wrapLayer: WrapLayer, model): MeshInfo
+	-- Create the WrapDeformer for the outer cage
+	local wrapDeformer = meshPart:FindFirstChildWhichIsA("WrapDeformer")
+	if not wrapDeformer then
+		wrapDeformer = Instance.new("WrapDeformer")
+		wrapDeformer.Parent = meshPart
+	end
+
+	-- Kitbashing updates the EditableMesh of the MeshPart directly without using WrapDeformers
+	-- Remap the UVs and reapply the mesh
+	local editableMesh = AssetService:CreateEditableMeshAsync(Content.fromUri(meshPart.MeshId), {
+		FixedSize = false,
+	})
+	RemapUVsForKitbashAtlas(editableMesh)
+	local newMeshPart = AssetService:CreateMeshPartAsync(Content.fromObject(editableMesh))
+	newMeshPart.Size = meshPart.Size
+	newMeshPart.CFrame = meshPart.CFrame
+	newMeshPart.TextureContent = meshPart.TextureContent
+	meshPart:ApplyMesh(newMeshPart)
+
+	-- Set up outer cage (similar to WrapTarget)
+	local outerCageEditableMesh: EditableMesh =
+		AssetService:CreateEditableMeshAsync(Content.fromUri(wrapLayer.CageMeshId), {
+			FixedSize = true,
+		})
+	local cageOrigin = wrapLayer.CageOrigin
+	wrapDeformer:SetCageMeshContent(Content.fromObject(outerCageEditableMesh), cageOrigin)
+
+	-- Create a deformed mesh based on the outer cage
+	local wrapDeformerEditableMesh: EditableMesh = wrapDeformer:CreateEditableMeshAsync()
+
+	-- Set up the rest of the structure as before
+	local initialOuterCageVertexPositions = MeshUtils.GetVertexPositionsMap(outerCageEditableMesh)
+	local min, max = MeshUtils.GetVertexBounds(initialOuterCageVertexPositions)
+	local initialCageSize = max - min
+	local initialVertexPositions = MeshUtils.GetVertexPositions(wrapDeformerEditableMesh)
+	local scaleFactor = MeshUtils.GetScaleFactor(meshPart, initialVertexPositions)
+
+	local meshInfo: MeshInfo = {
+		meshPart = meshPart,
+		cageInfo = {
+			cageEditableMesh = outerCageEditableMesh,
+			wrapDeformer = wrapDeformer,
+			initialVertexPositionsMap = initialOuterCageVertexPositions,
+			cageOrigin = cageOrigin,
+
+			initialSize = initialCageSize,
+			deformedEditableMeshDirty = false,
+			deformedEditableMesh = wrapDeformerEditableMesh,
+
+			-- New fields for WrapLayer
+			isWrapLayer = true,
+		},
+		kitbashEditableMesh = editableMesh,
+		initialCFrame = meshPart.CFrame,
+		scaleFactor = scaleFactor,
+	}
+
+	return meshInfo
+end
+
+local function SetupModelMeshes(model: Model, individualPartsNames: { [string]: boolean }, creationType: string): ModelMeshInfo
 	local newModelInfo: ModelMeshInfo = {}
 
 	for _, descendant in model:GetDescendants() do
@@ -125,11 +210,19 @@ local function SetupModelMeshes(model: Model): ModelMeshInfo
 			continue
 		end
 
+		-- Only include parts of the model that we want to edit.
+		if not individualPartsNames[descendant.Name] then
+			continue
+		end
+
 		local wrapTarget = descendant:FindFirstChildOfClass("WrapTarget")
+		local wrapLayer = descendant:FindFirstChildOfClass("WrapLayer")
 		if wrapTarget then
 			newModelInfo[descendant] = SetupBodyPart(descendant, wrapTarget)
+		elseif wrapLayer then
+			newModelInfo[descendant] = SetupLayeredClothingPart(descendant, wrapLayer, model)
 		else
-			newModelInfo[descendant] = SetupRigidMesh(descendant)
+			newModelInfo[descendant] = SetupRigidMesh(descendant, creationType)
 		end
 	end
 
@@ -581,10 +674,7 @@ local function UpdateMeshScaleFactor(meshInfo: MeshInfo, meshPart: MeshPart)
 	if meshInfo.cageInfo then
 		vertexPositions = MeshUtils.GetVertexPositions(meshInfo.cageInfo.deformedEditableMesh)
 	else
-		assert(
-			meshInfo.editableMesh ~= nil,
-			"EditableMesh or Deformed Mesh not found for meshPart " .. meshPart.Name
-		)
+		assert(meshInfo.editableMesh ~= nil, "EditableMesh or Deformed Mesh not found for meshPart " .. meshPart.Name)
 		vertexPositions = MeshUtils.GetVertexPositions(meshInfo.editableMesh :: EditableMesh)
 	end
 	meshInfo.scaleFactor = MeshUtils.GetScaleFactor(meshPart, vertexPositions)
@@ -596,7 +686,7 @@ MeshInfo.__index = MeshInfo
 function MeshInfo.new(model, blankData: BlanksData.BlankData)
 	local self = setmetatable({}, MeshInfo)
 
-	self.modelMeshInfo = SetupModelMeshes(model)
+	self.modelMeshInfo = SetupModelMeshes(model, blankData.individualPartsNames, blankData.creationType)
 
 	self.widgetInfo = BuildWidgetInfo(model, blankData.meshEditControlGroups, self.modelMeshInfo)
 
@@ -627,10 +717,8 @@ function MeshInfo:GetDeformedEditableMesh(meshPart: MeshPart): EditableMesh
 	assert(meshInfo.cageInfo, "CageInfo must exist for deformable meshPart " .. meshPart.Name)
 
 	if meshInfo.cageInfo.deformedEditableMeshDirty then
-		meshInfo.cageInfo.deformedEditableMesh = (
+		meshInfo.cageInfo.deformedEditableMesh =
 			meshInfo.cageInfo.wrapDeformer:CreateEditableMeshAsync() :: EditableMesh
-		)
-		UpdateMeshScaleFactor(meshInfo, meshPart)
 		meshInfo.cageInfo.deformedEditableMeshDirty = false
 	end
 
@@ -644,14 +732,7 @@ function MeshInfo:GetEditableMesh(meshPart: MeshPart): EditableMesh
 	end
 
 	if meshInfo.cageInfo then
-		if meshInfo.cageInfo.deformedEditableMeshDirty then
-			meshInfo.cageInfo.deformedEditableMesh = (
-				meshInfo.cageInfo.wrapDeformer:CreateEditableMeshAsync() :: EditableMesh
-			)
-			UpdateMeshScaleFactor(meshInfo, meshPart)
-			meshInfo.cageInfo.deformedEditableMeshDirty = false
-		end
-		return meshInfo.cageInfo.deformedEditableMesh
+		return self:GetDeformedEditableMesh(meshPart)
 	else
 		assert(meshInfo.editableMesh ~= nil, "EditableMesh or Deformed Mesh not found for meshPart " .. meshPart.Name)
 		return meshInfo.editableMesh
@@ -694,13 +775,7 @@ function MeshInfo:UpdateDeformedEditableMeshes()
 			continue
 		end
 
-		if meshInfo.cageInfo.deformedEditableMeshDirty then
-			meshInfo.cageInfo.deformedEditableMesh = (
-				meshInfo.cageInfo.wrapDeformer:CreateEditableMeshAsync() :: EditableMesh
-			)
-			UpdateMeshScaleFactor(meshInfo, meshPart)
-			meshInfo.cageInfo.deformedEditableMeshDirty = false
-		end
+		self:GetDeformedEditableMesh(meshPart)
 	end
 end
 
@@ -725,6 +800,22 @@ function MeshInfo:GetEditableMeshMap(): MeshTypes.EditableMeshMap
 				meshInfo.editableMesh ~= nil,
 				"EditableMesh or Deformed Mesh not found for meshPart " .. meshPart.Name
 			)
+			editableMeshMap[meshPart] = meshInfo.editableMesh
+		end
+	end
+
+	return editableMeshMap
+end
+
+function MeshInfo:GetKitbashEditableMeshMap(): MeshTypes.EditableMeshMap
+	local editableMeshMap: MeshTypes.EditableMeshMap = {}
+
+	for meshPart, meshInfo: MeshInfo in pairs(self.modelMeshInfo) do
+		if meshInfo.cageInfo then
+			-- Layered Accessories
+			editableMeshMap[meshPart] = meshInfo.kitbashEditableMesh
+		else
+			-- Rigid Accessories
 			editableMeshMap[meshPart] = meshInfo.editableMesh
 		end
 	end

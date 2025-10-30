@@ -27,6 +27,26 @@ export type RecolorActionMetadata = {
 	targetMeshPartName: MeshPart,
 }
 
+local function GetSizeForTextureBuffer(modelInfo, colorMap)
+	if modelInfo:GetCreationType() ~= Constants.CREATION_TYPES.Accessory then
+		return colorMap.Size
+	end
+
+	-- If this creation support kitbashing,
+	-- find the target buffer size as the top left
+	-- grid entry in the atlas
+	return Vector2.new(
+		math.floor(colorMap.Size.X / Constants.ATLAS_GRID_SIZE),
+		math.floor(colorMap.Size.Y / Constants.ATLAS_GRID_SIZE)
+	)
+end
+
+local function GetAtlasBaseSize(modelInfo, colorMap: EditableImage)
+	-- top-left cell size for accessories; full size otherwise
+	local size = GetSizeForTextureBuffer(modelInfo, colorMap)
+	return size
+end
+
 ImageEditActions.RecolorAction = {
 	IsValidAction = function(modelInfo, actionMetaData: RecolorActionMetadata)
 		if actionMetaData.color == nil then
@@ -43,9 +63,10 @@ ImageEditActions.RecolorAction = {
 		local targetMeshPart = modelInfo:GetMeshPartByName(actionMetaData.targetMeshPartName)
 		local textureInfo = modelInfo:GetTextureInfo()
 		local colorMap: EditableImage = textureInfo:GetBaseLayer(targetMeshPart)
+
 		colorMap:DrawRectangle(
 			Vector2.new(0, 0),
-			colorMap.Size,
+			GetAtlasBaseSize(modelInfo, colorMap),
 			actionMetaData.color,
 			0,
 			Enum.ImageCombineType.Overwrite
@@ -99,7 +120,9 @@ ImageEditActions.RecolorRegionAction = {
 			assert(region.regionColor, "Region color must be defined if regionBuffer is defined")
 
 			for colorMap: EditableImage, _ in uniqueEditableImages do
-				local currentPixelsBuffer = colorMap:ReadPixelsBuffer(Vector2.zero, colorMap.Size)
+				local textureSize = GetSizeForTextureBuffer(modelInfo, colorMap)
+
+				local currentPixelsBuffer = colorMap:ReadPixelsBuffer(Vector2.zero, textureSize)
 				local regionPixelsBuffer = region.regionBuffer
 
 				local regionR255 = region.regionColor.r
@@ -110,26 +133,38 @@ ImageEditActions.RecolorRegionAction = {
 				local colorG255 = actionMetaData.color.G * 255
 				local colorB255 = actionMetaData.color.B * 255
 
-				-- Only pixels where the region color matches the region image color are recolored
-				for i = 0, buffer.len(currentPixelsBuffer) - 1, 4 do
-					if
-						buffer.readu8(regionPixelsBuffer, i) == regionR255
-						and buffer.readu8(regionPixelsBuffer, i + 1) == regionG255
-						and buffer.readu8(regionPixelsBuffer, i + 2) == regionB255
-					then
-						buffer.writeu8(currentPixelsBuffer, i, colorR255)
-						buffer.writeu8(currentPixelsBuffer, i + 1, colorG255)
-						buffer.writeu8(currentPixelsBuffer, i + 2, colorB255)
+				if buffer.len(regionPixelsBuffer) == buffer.len(currentPixelsBuffer) then
+					-- Only pixels where the region color matches the region image color are recolored
+					for i = 0, buffer.len(currentPixelsBuffer) - 1, 4 do
+						if
+							buffer.readu8(regionPixelsBuffer, i) == regionR255
+							and buffer.readu8(regionPixelsBuffer, i + 1) == regionG255
+							and buffer.readu8(regionPixelsBuffer, i + 2) == regionB255
+						then
+							buffer.writeu8(currentPixelsBuffer, i, colorR255)
+							buffer.writeu8(currentPixelsBuffer, i + 1, colorG255)
+							buffer.writeu8(currentPixelsBuffer, i + 2, colorB255)
+						end
 					end
+				else
+					-- In the case colorMap is smaller than region map, determine the scale difference
+					TextureUtils.WriteBufferForLargerRegionMap(
+						textureSize,
+						regionPixelsBuffer,
+						currentPixelsBuffer,
+						region.regionColor,
+						actionMetaData.color
+					)
 				end
 
-				colorMap:WritePixelsBuffer(Vector2.zero, colorMap.Size, currentPixelsBuffer)
+				colorMap:WritePixelsBuffer(Vector2.zero, textureSize, currentPixelsBuffer)
 			end
 		else
 			for colorMap, _ in uniqueEditableImages do
+				local textureSize = GetSizeForTextureBuffer(modelInfo, colorMap)
 				colorMap:DrawRectangle(
 					Vector2.new(0, 0),
-					colorMap.Size,
+					textureSize,
 					actionMetaData.color,
 					0,
 					Enum.ImageCombineType.Overwrite
@@ -387,7 +422,13 @@ ImageEditActions.RemoveStickerAction = {
 	ExecuteAction = function(modelInfo, actionMetaData: RemoveStickerActionMetadata)
 		local targetMeshPart = modelInfo:GetMeshPartByName(actionMetaData.targetMeshPartName)
 		local textureInfo: TextureInfo.TextureInfoClass = modelInfo:GetTextureInfo()
-		textureInfo:RemoveLayer(targetMeshPart, Constants.STICKER_LAYER_PREFIX .. actionMetaData.stickerLayerNumber)
+
+		local stickerLayerName = Constants.STICKER_LAYER_PREFIX .. actionMetaData.stickerLayerNumber
+
+		local stickerLayer: EditableImage, _didCreateLayer: boolean =
+			textureInfo:GetOrCreateLayer(targetMeshPart, stickerLayerName)
+		TextureUtils.Clear(stickerLayer)
+		textureInfo:RemoveLayer(targetMeshPart, stickerLayerName)
 	end,
 }
 
@@ -399,7 +440,7 @@ export type ProjectedStickerActionMetadata = {
 
 	rotation: number,
 	scale: number,
-	normal: Vector3,
+	direction: Vector3,
 	position: Vector3,
 }
 
@@ -408,7 +449,7 @@ ImageEditActions.ProjectedStickerAction = {
 		if
 			not actionMetaData.rotation
 			or not actionMetaData.scale
-			or not actionMetaData.normal
+			or not actionMetaData.direction
 			or not actionMetaData.position
 		then
 			return false
@@ -446,10 +487,10 @@ ImageEditActions.ProjectedStickerAction = {
 
 		local stickerTexture = textureInfo:GetOrCreateEditableImageByTextureId(actionMetaData.textureId)
 
-		local projectionRotater = CFrame.fromAxisAngle(-actionMetaData.normal, actionMetaData.rotation)
+		local projectionRotater = CFrame.fromAxisAngle(actionMetaData.direction, actionMetaData.rotation)
 
 		local projection: ProjectionParams = {
-			Direction = -actionMetaData.normal,
+			Direction = actionMetaData.direction,
 			Position = actionMetaData.position,
 			Size = Vector3.one * actionMetaData.scale,
 			Up = projectionRotater * Vector3.new(0, 1, 0),
@@ -622,6 +663,7 @@ ImageEditActions.ClearAction = {
 		local colorMap: EditableImage = textureInfo:GetBaseLayer(targetMeshPart)
 
 		colorMap:DrawImage(Vector2.zero, originalEditableImage, Enum.ImageCombineType.Overwrite)
+		originalEditableImage:Destroy()
 
 		return colorMap
 	end,
@@ -686,6 +728,8 @@ ImageEditActions.ClearRegionAction = {
 			colorMap:DrawImage(Vector2.zero, originalEditableImage, Enum.ImageCombineType.Overwrite)
 		end
 
+		originalEditableImage:Destroy()
+
 		return colorMap
 	end,
 }
@@ -720,12 +764,18 @@ ImageEditActions.ProjectionBrushAction = {
 		local referenceMeshPart = modelInfo:GetMeshPartByName(actionMetaData.referenceMeshPartName)
 		local textureInfo = modelInfo:GetTextureInfo()
 		local targetLayer: EditableImage = textureInfo:GetOrCreateLayer(referenceMeshPart, Constants.BRUSH_LAYER)
-		
+
 		local sourceAlpha = actionMetaData.alphaBlendType == Enum.ImageAlphaType.Default and 1.0 or 0.0
 		local targetAlpha = actionMetaData.alphaBlendType == Enum.ImageAlphaType.Default and 0.0 or 1.0
 
-		local projectionBrushCircleTexture, projectionBrushLineTexture, circleBrushConfig, lineBrushConfig
-		= TextureUtils.CreateAndSetupProjectionBrushTexturesAndConfigs(sourceAlpha, targetAlpha, actionMetaData.brushColor, actionMetaData.colorBlendType, actionMetaData.alphaBlendType)
+		local projectionBrushCircleTexture, projectionBrushLineTexture, circleBrushConfig, lineBrushConfig =
+			TextureUtils.CreateAndSetupProjectionBrushTexturesAndConfigs(
+				sourceAlpha,
+				targetAlpha,
+				actionMetaData.brushColor,
+				actionMetaData.colorBlendType,
+				actionMetaData.alphaBlendType
+			)
 
 		local meshInfo = modelInfo:GetMeshInfo()
 		local allEditableMesh = meshInfo:GetEditableMeshMap()
@@ -737,24 +787,27 @@ ImageEditActions.ProjectionBrushAction = {
 		for i, currentPosition in pairs(actionMetaData.drawPositions) do
 			local castedPoint = referenceMeshPart.CFrame:PointToWorldSpace(currentPosition)
 			local scaledBrushSize = actionMetaData.brushSize
-			
-			local pbResult = TextureUtils.GenerateProjectionBrushPoints(lastCastedPoint, castedPoint, cameraCFrame, scaledBrushSize)
-	
+
+			local pbResult =
+				TextureUtils.GenerateProjectionBrushPoints(lastCastedPoint, castedPoint, cameraCFrame, scaledBrushSize)
+
 			for currMeshPart, currEditableMesh in pairs(allEditableMesh) do
-				local collisionTest = Utils.TestOBBCollision(currMeshPart, pbResult.projectorCFrame, pbResult.projectorBrushSize)
+				local collisionTest =
+					Utils.TestOBBCollision(currMeshPart, pbResult.projectorCFrame, pbResult.projectorBrushSize)
 				if collisionTest then
 					TextureUtils.DrawProjectionBrush(
-					cameraDirection,
-					currMeshPart,
-					currEditableMesh,
-					pbResult.castedPointOffSet,
-					pbResult.castedCenterPointOffSet,
-					scaledBrushSize,
-					pbResult.castedDeltaVecLength,
-					pbResult.castedUp,
-					circleBrushConfig,
-					lineBrushConfig,
-					targetLayer)
+						cameraDirection,
+						currMeshPart,
+						currEditableMesh,
+						pbResult.castedPointOffSet,
+						pbResult.castedCenterPointOffSet,
+						scaledBrushSize,
+						pbResult.castedDeltaVecLength,
+						pbResult.castedUp,
+						circleBrushConfig,
+						lineBrushConfig,
+						targetLayer
+					)
 				end
 			end
 

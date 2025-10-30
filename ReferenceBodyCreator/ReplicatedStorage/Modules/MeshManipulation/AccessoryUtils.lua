@@ -43,6 +43,10 @@ function AccessoryUtils.GatherAccessories(model: Model): { AccessoryInfo }
 			continue
 		end
 
+		if handle:FindFirstChildWhichIsA("WrapLayer") then
+			continue
+		end
+
 		local attachment = handle:FindFirstChildWhichIsA("Attachment")
 		if not attachment then
 			continue
@@ -136,6 +140,61 @@ function AccessoryUtils.RevertToOriginalSizes(model)
 
 		handle.Size = originalSizeValue.Value
 		originalSizeValue:Destroy()
+	end
+end
+
+local function findMatchingAttachment(character: Model, attachmentName: string)
+	for _, child in character:GetDescendants() do
+		if child:IsA("Attachment") and child.Name == attachmentName then
+			if not child:FindFirstAncestorOfClass("Accessory") then
+				return child
+			end
+		end
+	end
+	return nil
+end
+
+local function equipLayeredAccessory(character: Model, layeredAccessory: Accessory)
+	local accessoryAttachment = layeredAccessory:FindFirstChildWhichIsA("Attachment", true)
+
+	local attachment = findMatchingAttachment(character, accessoryAttachment.Name)
+	local attachmentPart = attachment.Parent
+	local wrapTarget = attachmentPart:FindFirstChildWhichIsA("WrapTarget")
+
+	local itemPart = layeredAccessory:FindFirstChildWhichIsA("BasePart", true)
+	local wrapLayer = itemPart:FindFirstChildWhichIsA("WrapLayer", true)
+	local handle = itemPart
+
+	local worldaFromWrap = wrapTarget.ImportOriginWorld
+	local wrapFromWorldb = wrapLayer.ImportOriginWorld:Inverse()
+	local worldaFromWorldb = worldaFromWrap * wrapFromWorldb
+	local worldb = wrapLayer.Parent.CFrame
+	handle.CFrame = (worldaFromWorldb * worldb)
+
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = handle
+	weld.Part1 = attachmentPart
+	weld.Parent = handle
+
+	itemPart.Anchored = false
+	layeredAccessory.Parent = character
+end
+
+function AccessoryUtils.ReapplyLayeredClothing(model: Model)
+	for _, descendant in model:GetDescendants() do
+		if descendant:IsA("WrapLayer") then
+			local handle = descendant.Parent
+
+			for _, child in handle:GetChildren() do
+				if child:IsA("Weld") then
+					child:Destroy()
+				end
+			end
+
+			local accessory = handle.Parent
+
+			equipLayeredAccessory(model, accessory)
+		end
 	end
 end
 

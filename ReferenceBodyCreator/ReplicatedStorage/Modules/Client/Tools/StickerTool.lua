@@ -17,7 +17,14 @@ local Utils = require(Modules:WaitForChild("Utils"))
 
 local Client = Modules:WaitForChild("Client")
 local UI = Client:WaitForChild("UI")
-local UIUtils = require(UI:WaitForChild("UIUtils"))
+local StyleConsts = require(UI:WaitForChild("StyleConsts"))
+local styleTokens = StyleConsts.styleTokens
+
+local Config = Modules:WaitForChild("Config")
+local Constants = require(Config:WaitForChild("Constants"))
+
+local Components = UI:WaitForChild("Components")
+local EditHandle = require(Components:WaitForChild("EditHandle"))
 
 local TextureManipulation = Modules:WaitForChild("TextureManipulation")
 local ImageEditActions = require(TextureManipulation:WaitForChild("ImageEditActions"))
@@ -33,9 +40,6 @@ local SendActionToServerEvent = Remotes:WaitForChild("SendActionToServerEvent")
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer.PlayerGui
 
-local MOVE_HANDLE = "MoveHandle"
-local SCALE_HANDLE = "ScaleHandle"
-local ROTATE_HANDLE = "RotateHandle"
 local HANDLE_GUI_NAME = "StickerHandleGui"
 
 local StickerTool = {}
@@ -44,7 +48,7 @@ StickerTool.__index = StickerTool
 type StickerData = {
 	textureId: string,
 
-	normal: Vector3,
+	projectionDirection: Vector3,
 
 	texturePosition: Vector2,
 	rotation: number,
@@ -82,7 +86,7 @@ function StickerTool.new(modelInfo: ModelInfo.ModelInfoClass, inputManager)
 	-- AppliedStickers contains info about all the stickers that are currently applied to the body.
 	-- Position, rotation, scale, tile padding, etc.
 	self.appliedStickers = modelInfo:GetAppliedStickers() :: { StickerData }
-	self.stickerCounter = 1 + #self.appliedStickers
+	self.stickerCounter = #self.appliedStickers
 
 	self.connections = {}
 
@@ -120,10 +124,21 @@ local function RotateVectorAroundAxis(v, angleDegrees, axis)
 	return CFrame.fromAxisAngle(axis, angleRadians):VectorToWorldSpace(v)
 end
 
+function StickerTool:ConnectHandlesToStyle(style)
+	style:LinkGui(self.inputGui)
+end
+
 function StickerTool:RefreshMarkerPosition(stickerData: StickerData?)
 	if stickerData then
 		stickerData.positionMarker.CFrame =
 			stickerData.targetMeshPart.CFrame:ToWorldSpace(stickerData.positionMarkerOffset)
+
+		local directionIndicator = stickerData.positionMarker:FindFirstChild("StickerDirectionMarker")
+		if directionIndicator then
+			directionIndicator.Position =
+				stickerData.positionMarker.Position + stickerData.projectionDirection
+		end
+
 		self:RefreshHandleUI()
 	end
 end
@@ -151,22 +166,20 @@ function StickerTool:MoveStickerBetweenParts(stickerData: StickerData, newTarget
 	SendActionToServerEvent:FireServer(removeStickerAction)
 end
 
-local WIDGET_RADIUS = 150
 function StickerTool:SetupHandles()
-	local uiHandles = {}
 	local handleGui = Instance.new("ScreenGui")
 	handleGui.Name = HANDLE_GUI_NAME
 	handleGui.Parent = PlayerGui
 	self.inputGui = handleGui
 	handleGui.Enabled = false
 
-	local moveHandle = Instance.new("ImageButton")
-	moveHandle.Name = MOVE_HANDLE
-	moveHandle.Size = UDim2.fromOffset(WIDGET_RADIUS, WIDGET_RADIUS)
-	moveHandle.AnchorPoint = Vector2.new(0.5, 0.5)
-	moveHandle.BackgroundTransparency = 1
+	self.UIHandles = EditHandle.new()
+
+	local moveHandle = self.UIHandles.moveHandle
 	moveHandle.Parent = handleGui
-	moveHandle.Image = "rbxassetid://11815857063"
+	-- These are already children of the moveHandle
+	local rotateHandle = self.UIHandles.rotateHandle
+	local scaleHandle = self.UIHandles.scaleHandle
 
 	local moveHandleInputBegan = moveHandle.InputBegan:Connect(function(input)
 		if
@@ -223,6 +236,12 @@ function StickerTool:SetupHandles()
 			)
 			selectedSticker.positionMarkerOffset = meshPart.CFrame:ToObjectSpace(selectedSticker.positionMarker.CFrame)
 
+			local directionIndicator = selectedSticker.positionMarker:FindFirstChild("StickerDirectionMarker")
+			if directionIndicator then
+				directionIndicator.Position =
+					selectedSticker.positionMarker.Position + selectedSticker.projectionDirection
+			end
+
 			local uvCoord = MeshUtils.GetTextureCoordinate(
 				raycastResult.editableMesh,
 				raycastResult.triangleId,
@@ -238,18 +257,6 @@ function StickerTool:SetupHandles()
 		end
 	end)
 	table.insert(self.connections, inputChanged)
-
-	uiHandles[MOVE_HANDLE] = moveHandle
-
-	local rotateHandle = Instance.new("ImageButton")
-	rotateHandle.Name = ROTATE_HANDLE
-	rotateHandle.Size = UDim2.fromOffset(40, 40)
-	rotateHandle.AnchorPoint = Vector2.new(0.5, 0.5)
-	rotateHandle.BackgroundTransparency = 1
-	rotateHandle.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
-	rotateHandle.Image = "rbxassetid://11815925470"
-	rotateHandle.Parent = moveHandle
-	UIUtils.AddUICorner(rotateHandle, 10)
 
 	local rotateHandleInputBeganConnection = rotateHandle.InputBegan:Connect(function(input)
 		if
@@ -299,7 +306,8 @@ function StickerTool:SetupHandles()
 
 			local angle = math.atan2(cross:Dot(planeNormal), upDot)
 
-			angle = math.deg(angle)
+			-- Account for difference between up vector and the rotation handle
+			angle = math.deg(angle) + (90 - styleTokens.RotateHandlePosDegrees)
 			selectedSticker.rotation = math.abs((selectedSticker.rotation + angle) % 360) * -1
 
 			self:RefreshHandleUI()
@@ -325,16 +333,6 @@ function StickerTool:SetupHandles()
 		end
 	end)
 	table.insert(self.connections, inputChangedConnection)
-
-	uiHandles[ROTATE_HANDLE] = rotateHandle
-
-	local scaleHandle = Instance.new("ImageButton")
-	scaleHandle.Name = SCALE_HANDLE
-	scaleHandle.Size = UDim2.fromOffset(40, 40)
-	scaleHandle.Image = "rbxassetid://11815900778"
-	scaleHandle.AnchorPoint = Vector2.new(0.5, 0.5)
-	scaleHandle.Parent = moveHandle
-	scaleHandle.BackgroundTransparency = 1
 
 	-- When we drag a scale handle, resize the sticker
 	local scaleInputBeganConnection = scaleHandle.InputBegan:Connect(function(input)
@@ -402,10 +400,6 @@ function StickerTool:SetupHandles()
 	end)
 
 	table.insert(self.connections, cameraChangedConnection)
-
-	uiHandles[SCALE_HANDLE] = scaleHandle
-
-	self.UIHandles = uiHandles
 end
 
 function StickerTool:RefreshHandleUI()
@@ -427,21 +421,9 @@ function StickerTool:RefreshHandleUI()
 	local stickerPos3d = selectedSticker.positionMarker.Position
 	local camera = workspace.CurrentCamera
 
-	local moveHandle = self.UIHandles[MOVE_HANDLE]
 	local moveHandlePos = camera:WorldToScreenPoint(stickerPos3d)
-	moveHandle.Position = UDim2.fromOffset(moveHandlePos.X, moveHandlePos.Y)
-	moveHandle.Rotation = selectedSticker.rotation
-	moveHandle.Size = UDim2.new(0, WIDGET_RADIUS * selectedSticker.scale, 0, WIDGET_RADIUS * selectedSticker.scale)
 
-	local rotateHandlePos = Vector2.new(math.cos(math.rad(70)), -math.sin(math.rad(70)))
-		* (WIDGET_RADIUS * selectedSticker.scale / 2)
-	rotateHandlePos = rotateHandlePos + Vector2.new(moveHandle.AbsoluteSize.X / 2, moveHandle.AbsoluteSize.Y / 2)
-	self.UIHandles[ROTATE_HANDLE].Position = UDim2.fromOffset(rotateHandlePos.X, rotateHandlePos.Y)
-
-	local scaleHandlePos = Vector2.new(math.cos(math.rad(30)), -math.sin(math.rad(30)))
-		* (WIDGET_RADIUS * selectedSticker.scale / 2)
-	scaleHandlePos = scaleHandlePos + Vector2.new(moveHandle.AbsoluteSize.X / 2, moveHandle.AbsoluteSize.Y / 2)
-	self.UIHandles[SCALE_HANDLE].Position = UDim2.fromOffset(scaleHandlePos.X, scaleHandlePos.Y)
+	self.UIHandles:Refresh(moveHandlePos, selectedSticker.scale, selectedSticker.rotation)
 end
 
 local function GetAverageMeshPartPosition(meshParts: { MeshPart }): Vector3
@@ -469,8 +451,11 @@ local function GetClosestMeshPart(modelInfo: ModelInfo.ModelInfoClass): (MeshPar
 	local rayOrigin = workspace.CurrentCamera.CFrame.Position
 	local rayTarget = averageMeshPartPosition + Vector3.FromAxis(Enum.Axis.Y)
 	local rayDirection = rayTarget - rayOrigin
-	local raycastResult: MeshUtils.EditableMeshRaycastResult? =
-		MeshUtils.RaycastAll(Ray.new(rayOrigin, rayDirection), meshInfo:GetEditableMeshMap(), meshInfo:GetScaleFactorMap())
+	local raycastResult: MeshUtils.EditableMeshRaycastResult? = MeshUtils.RaycastAll(
+		Ray.new(rayOrigin, rayDirection),
+		meshInfo:GetEditableMeshMap(),
+		meshInfo:GetScaleFactorMap()
+	)
 	if raycastResult == nil then
 		-- Get the closest vertex of the body part. This is more reliable than raycasting since some meshes are concave and raycast may pass through them.
 		for mappedMeshPart, mappedEditableMesh in pairs(meshInfo:GetEditableMeshMap()) do
@@ -500,11 +485,29 @@ local function CreatePositionMarker(newCFrame)
 	marker.Size = Vector3.new(0.1, 0.1, 0.1)
 	marker.CFrame = newCFrame
 	marker.Transparency = 1
+	marker.Color = Color3.new(0, 1, 0)
+	marker.Parent = workspace
+
+	local directionMarker = Instance.new("Part")
+	directionMarker.Name = "StickerDirectionMarker"
+	directionMarker.Anchored = true
+	directionMarker.CanCollide = false
+	directionMarker.CanTouch = false
+	directionMarker.CanQuery = false
+	directionMarker.Size = Vector3.new(0.1, 0.1, 0.1)
+	directionMarker.CFrame = newCFrame
+	directionMarker.Transparency = 1
+	directionMarker.Color = Color3.new(1, 0, 0)
+	directionMarker.Parent = marker
 
 	return marker
 end
 
 function StickerTool:ApplySticker(imageAssetId)
+	if self.stickerCounter >= Constants.MAX_STICKER_LAYERS then
+		return
+	end
+
 	local meshPart, editableMesh, closestVertex = GetClosestMeshPart(self.modelInfo)
 
 	local closestVertexPos = editableMesh:GetPosition(closestVertex)
@@ -538,7 +541,7 @@ function StickerTool:ApplySticker(imageAssetId)
 
 	local stickerData: StickerData = {
 		textureId = imageAssetId,
-		normal = Vector3.new(0, 0, 1),
+		projectionDirection = workspace.CurrentCamera.CFrame.LookVector,
 
 		texturePosition = uvCoord * textureInfo:GetTextureSize(meshPart),
 		rotation = 0,
@@ -552,7 +555,7 @@ function StickerTool:ApplySticker(imageAssetId)
 		positionMarker = marker,
 		positionMarkerOffset = meshPart.CFrame:ToObjectSpace(marker.CFrame),
 
-		stickerLayerNumber = self.stickerCounter,
+		stickerLayerNumber = 1 + self.stickerCounter,
 	}
 
 	self.stickerCounter = self.stickerCounter + 1
@@ -628,7 +631,7 @@ function StickerTool:RedrawSticker(stickerData: StickerData, shouldFireServer: b
 					scale = stickerData.scale,
 
 					position = meshPart.CFrame:PointToObjectSpace(stickerData.positionMarker.CFrame.Position),
-					normal = meshPart.CFrame:VectorToObjectSpace(stickerData.normal),
+					direction = meshPart.CFrame:VectorToObjectSpace(stickerData.projectionDirection),
 				}
 
 				local projectedStickerAction =
@@ -722,9 +725,8 @@ function StickerTool:SetPatterned(isPatterned)
 end
 
 function StickerTool:SetSelectedRegion(regionName: string)
-	if regionName == "All" then
+	if regionName and string.find(regionName, "Model") then
 		self.selectedRegionName = nil
-		return
 	end
 
 	self.selectedRegionName = regionName
@@ -758,6 +760,7 @@ function StickerTool:Enable()
 	if #self.appliedStickers > 0 then
 		self.currentlySelectedSticker = #self.appliedStickers
 	end
+	self:RefreshHandleUI()
 end
 
 function StickerTool:Disable()
