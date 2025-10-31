@@ -4,6 +4,11 @@
 local AssetService = game:GetService("AssetService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+if game.CreatorType == Enum.CreatorType.Group and game.CreatorId == 3529469 then
+	print("If you've just republished this experience from Roblox Resources, re-open the place to run this script")
+	return
+end
+
 local TShirtWrapLayer = ReplicatedStorage.Blanks.TShirtModel.ShirtAccessory.Shirt.TShirt_VNeck_001
 
 local referenceCageEditableMesh = AssetService:CreateEditableMeshAsync(TShirtWrapLayer.ReferenceMeshContent)
