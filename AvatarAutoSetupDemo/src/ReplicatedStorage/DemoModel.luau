@@ -3,6 +3,7 @@
 -- Creating a DemoModel instance around it allows it to handle clicks
 -- and manage the state of the avatar setup process for that model.
 
+local AvatarCreationService = game:GetService("AvatarCreationService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local AvatarUtils = require(ReplicatedStorage:WaitForChild("AvatarUtils"))
 
@@ -10,7 +11,7 @@ local STATE_INIT = "init" -- Initial state when the model is ready to be set up
 local STATE_INPROGRESS = "inprogress" -- State when avatar setup is in progress
 local STATE_EQUIP = "equip" -- State when avatar setup has completed successfully and the avatar is ready to equip
 local STATE_ERROR = "error" -- State when an error occurred during setup
-local STATE_PUBLISH = "publish" -- State when the avatar is already equipped and clicking will publish
+local STATE_COMPLETE = "complete" -- State when the avatar is already equipped and clicking should be a noop 
 
 local DemoModel = {}
 DemoModel.__index = DemoModel
@@ -62,15 +63,15 @@ end
 -- Update the clickable text based on the current state
 function DemoModel:updateText()
 	if self.state == STATE_INIT then
-		self:setText("Setup Avatar")
+		self:setText("Setup")
 		self:setProgress(0)
 	elseif self.state == STATE_INPROGRESS then
 		self:setText("In progress...")
 	elseif self.state == STATE_EQUIP then
 		self:setText("Equip")
 		self:setProgress(1)
-	elseif self.state == STATE_PUBLISH then
-		self:setText("Publish")
+	elseif self.state == STATE_COMPLETE then
+		self:setText("Equipped")
 		self:setProgress(1)
 	else
 		self:setText("Error. Retry")
@@ -84,14 +85,60 @@ function DemoModel:setState(newState)
 	self:updateText()
 end
 
+local function getAccessoryTypeFromAttribute(instance: Instance)
+	local accessoryTypeName = instance:GetAttribute("AutoSetupAccessoryType")
+	if accessoryTypeName == nil then
+		error(`AutoSetupAccessoryType attribute missing for instance {instance.Name}`)
+	end
+	local accessoryType = Enum.AccessoryType:FromName(accessoryTypeName)
+	if accessoryType == nil then
+		error(`AutoSetupAccessoryType attribute {accessoryTypeName} is invalid for instance {instance.Name}`)
+	end
+	return accessoryType
+end
+
+-- Create AutoSetupParams table based on custom attributes in our test models:
+--   - AutoSetupType -- "Body", "Layered", or "Rigid" to indicate how the model should be set up
+--   - AutoSetupAccessoryType -- For layered and rigid accessories, the AccessoryType enum name (e.g. "Hat", "Hair", etc)
+function DemoModel:getAutoSetupParams(): AutoSetupParams
+    local autoSetupParams: AutoSetupParams = {
+        Body = nil,
+        Accessories = {},
+    }
+
+    for _, child in self.model:GetChildren() do
+        if child:IsA("Model") then
+            local autoSetupType = child:GetAttribute("AutoSetupType")
+            if autoSetupType == "Body" then
+                autoSetupParams.Body = child
+            elseif autoSetupType == "Layered" or autoSetupType == "Rigid" then
+                local autoSetupAccessory = {
+                    AccessoryType = getAccessoryTypeFromAttribute(child),
+                    IsLayered = (autoSetupType == "Layered"),
+                    Instance = child,
+                }
+                table.insert(autoSetupParams.Accessories, autoSetupAccessory)
+            else
+                warn("Unknown AutoSetupType: " .. tostring(autoSetupType))
+            end
+        end
+    end
+
+    return autoSetupParams
+end
+
 -- Invokes auto-setup and updates the state when it completes
 function DemoModel:doAutoSetup(player: Player)
 	self:setState(STATE_INPROGRESS)
 	task.spawn(function()
 		local success, errorMessage = pcall(function()
-			self.generationId = AvatarUtils.setupAvatar(player, self.model, function(progressInfo: AvatarUtils.ProgressInfo)
-				self:setProgress(progressInfo.Progress)
-			end)
+			self.generationId = AvatarCreationService:AutoSetupAvatarAsync(
+				player,
+				self:getAutoSetupParams(),
+				function(progressInfo: AvatarUtils.ProgressInfo)
+					self:setProgress(progressInfo.Progress)
+				end
+			)
 		end)
 
 		if success then
@@ -106,7 +153,7 @@ end
 -- Equip the auto-setup results for this model
 function DemoModel:doEquip(player: Player)
 	AvatarUtils.equipAvatarFromServer(player, self.generationId)
-	self:setState(STATE_PUBLISH)
+	self:setState(STATE_COMPLETE)
 	self.onEquip(self)
 end
 
@@ -117,10 +164,7 @@ function DemoModel:onClicked(player)
 
 	elseif self.state == STATE_EQUIP then
 		self:doEquip(player)
-
-	elseif self.state == STATE_PUBLISH then
-		AvatarUtils.publishAvatar(player, self.generationId)
-	end
+    end
 end
 
 function DemoModel:destroy()
@@ -131,7 +175,7 @@ function DemoModel:destroy()
 end
 
 function DemoModel:onUnequip()
-	if self.state == STATE_PUBLISH then
+	if self.state == STATE_COMPLETE then
 		self:setState(STATE_EQUIP)
 	end
 end
