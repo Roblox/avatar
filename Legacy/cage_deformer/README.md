@@ -1,6 +1,7 @@
 # Cage Mesh Deformer
 This folder contains all FBX files used to create the demos for the cage mesh deformer release. Please, check out our <a href="https://devforum.roblox.com/t/cage-mesh-deformer-studio-beta/1196727">DevForum</a> post for more details.
 
+These files may be different than the maintained files available on the [official documentation](https://create.roblox.com/docs/avatar/resources).
 
 
 
