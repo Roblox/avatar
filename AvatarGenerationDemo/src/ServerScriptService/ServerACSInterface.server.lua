@@ -77,7 +77,7 @@ local function SelectImage(player)
 	end)
 	if not success then
 		print("PromptSelectAvatarGenerationImageAsync, error:", result)
-		ImageFailedEvent:FireClient(player, "Failed to select image")
+		ImageFailedEvent:FireClient(player, result)
 		return
 	end
 	local fileId = result
