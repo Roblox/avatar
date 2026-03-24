@@ -34,7 +34,7 @@ local COLOR_WHITE = Color3.fromRGB(255, 255, 255)
 local DARK_COLOR_1 = Color3.fromRGB(18, 18, 21)
 local DARK_COLOR_2 = Color3.fromRGB(25, 26, 31)
 local ERROR_COLOR = Color3.fromRGB(200, 0, 0)
-local ERROR_TEXT = "Image generation failed. Please try again."
+local ERROR_TEXT = "Image generation failed."
 local HINT_COLOR = Color3.fromRGB(140, 140, 140)
 local HINT_TEXT = "Click a photo and enter a prompt to generate a 2D face!"
 local NUM_COLUMNS = 5
@@ -1311,7 +1311,7 @@ function SelfiePreview:SetupEventListeners()
 
 		-- Show some red text to indicate that the image failed to generate
 		self.genHelpText.Visible = true
-		self.genHelpText.Text = ERROR_TEXT
+		self.genHelpText.Text = ERROR_TEXT.." "..error
 		self.genHelpText.TextColor3 = ERROR_COLOR
 	end)
 end

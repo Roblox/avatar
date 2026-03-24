@@ -538,6 +538,7 @@ function AvatarEditor:EquipTShirt(assetId)
 	local accessoryDescription = Instance.new("AccessoryDescription")
 	accessoryDescription.AssetId = assetId
 	accessoryDescription.AccessoryType = Enum.AccessoryType.TShirt
+	accessoryDescription.Order = 2
 	accessoryDescription.Parent = self.currentHumanoidDescription
 
 	self:RefreshModel()
@@ -552,6 +553,7 @@ function AvatarEditor:EquipPant(assetId)
 	local accessoryDescription = Instance.new("AccessoryDescription")
 	accessoryDescription.AssetId = assetId
 	accessoryDescription.AccessoryType = Enum.AccessoryType.Pants
+	accessoryDescription.Order = 1
 	accessoryDescription.Parent = self.currentHumanoidDescription
 
 	self:RefreshModel()

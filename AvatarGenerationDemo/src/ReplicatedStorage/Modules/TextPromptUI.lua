@@ -126,7 +126,11 @@ function TextPromptUI:SetupTextPromptUI()
 	self.textPromptTextBox.TextXAlignment = Enum.TextXAlignment.Left
 	self.textPromptTextBox.LayoutOrder = 4
 	self.textPromptTextBox.Parent = self.textPromptPanel
+	self.textPromptTextBox.AutomaticSize = Enum.AutomaticSize.Y
+	self.textPromptTextBox.TextWrapped = true
+	self.textPromptTextBox.ClearTextOnFocus = false
 	UIUtils.AddUICorner(self.textPromptTextBox, 8)
+	UIUtils.AddUIPadding(self.textPromptTextBox, 8)
 
 	local uiStroke = Instance.new("UIStroke")
 	uiStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
