@@ -230,7 +230,7 @@ def deleteTransform(wrongObjsList):
             bpy.context.view_layer.objects.active = clothingObj
             try:
                 bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-            except:
+            except Exception:
                 failed.appened(obj)
     if len(failed) == 0:
         return True
