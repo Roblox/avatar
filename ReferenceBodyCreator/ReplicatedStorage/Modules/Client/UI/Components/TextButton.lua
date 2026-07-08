@@ -2,13 +2,10 @@
 	Generic text button with styling. Used primarily for modals.
 ]]
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Modules = ReplicatedStorage:WaitForChild("Modules")
-local Client = Modules:WaitForChild("Client")
-local UI = Client:WaitForChild("UI")
-
-local Utils = require(Modules:WaitForChild("Utils"))
-local StyleConsts = require(UI:WaitForChild("StyleConsts"))
+local UI = script.Parent.Parent
+local Style = UI:WaitForChild("Style")
+local StyleConsts = require(Style:WaitForChild("StyleConsts"))
+local StyleUtils = require(Style:WaitForChild("StyleUtils"))
 
 local TextButton = {}
 
@@ -25,7 +22,7 @@ function TextButton.createComponentFrame(buttonInfo: ButtonInfo)
 	button.Activated:Connect(buttonInfo.callback)
 
 	-- Most styling is done via StyleSheets -- see UI/Style.lua
-	Utils.AddStyleTag(button, StyleConsts.tags.DefaultButton)
+	StyleUtils.AddStyleTag(button, StyleConsts.tags.DefaultButton)
 
 	return button
 end

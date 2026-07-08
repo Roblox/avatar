@@ -4,14 +4,13 @@
 	fill and sticker tool UIs.
 ]]
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Modules = ReplicatedStorage:WaitForChild("Modules")
-local Client = Modules:WaitForChild("Client")
+local UI = script.Parent.Parent
 
-local UI = Client:WaitForChild("UI")
-local StyleConsts = require(UI:WaitForChild("StyleConsts"))
+local Style = UI:WaitForChild("Style")
+local StyleConsts = require(Style:WaitForChild("StyleConsts"))
 
-local HorizontalPillbar = require(UI:WaitForChild("Components"):WaitForChild("HorizontalPillbar"))
+local Components = UI:WaitForChild("Components")
+local HorizontalPillbar = require(Components:WaitForChild("HorizontalPillbar"))
 
 local RegionPicker = {}
 

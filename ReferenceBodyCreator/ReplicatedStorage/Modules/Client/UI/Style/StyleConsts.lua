@@ -35,10 +35,20 @@ local TAGS = {
 	ValGradient = "ValGradient",
 	HuePicker = "HuePicker",
 	ColorDot = "ColorDot",
+	OpacityPicker = "OpacityPicker",
+	OpacityOverlay = "OpacityOverlay",
+	OpacityGradient = "OpacityGradient",
+
+	-- Toggle
+	ToggleFrame = "ToggleFrame",
+	TogglePill = "TogglePill",
+	ToggleLabel = "ToggleLabel",
 
 	-- TopBar Menu
 	LocalMenu = "LocalMenu",
+	LocalMenuConsole = "LocalMenuConsole",
 	LocalMenuButton = "LocalMenuButton",
+	LocalMenuButtonGroup = "LocalMenuButtonGroup",
 
 	-- Toolbar
 	Toolbar = "Toolbar",
@@ -86,6 +96,18 @@ local TAGS = {
 	ProgressBarLabel = "ProgressBarLabel",
 	ProgressBarBackground = "ProgressBarBackground",
 	ProgressBarProgress = "ProgressBarProgress",
+
+	-- Item Selector
+	MiniBaseTile = "MiniBaseTile",
+	MiniBaseTileGroup = "MiniBaseTileGroup",
+	MiniBaseTileSelected = "MiniBaseTileSelected",
+
+	ItemSelectorFrame = "ItemSelectorFrame",
+	ItemSelectorScrollFrame = "ItemSelectorScrollFrame",
+	ItemSelectorFlexFrame = "ItemSelectorFlexFrame",
+
+	CounterFrame = "CounterFrame",
+	CounterLabel = "CounterLabel",
 }
 
 -- Contains the image IDs of icons for direct use
@@ -98,12 +120,17 @@ local ICON_IMAGE_IDS = {
 	Scale = "rbxassetid://96436562942369",
 	Rotate = "rbxassetid://114067372218201",
 
-	Paintbrush = "rbxassetid://137159636362067",
+	Paintbrush = "rbxassetid://105441125994290",
 	Eraser = "rbxassetid://78016323272575",
 	Recolor = "rbxassetid://133908426980046",
 	Decal = "rbxassetid://110475569250921",
 	Pattern = "rbxassetid://107153084986708",
 	Kitbashing = "rbxassetid://135744896670779",
+
+	PaintbrushMuted = "rbxassetid://114632118377883",
+	EraserMuted = "rbxassetid://110165308214781",
+	DecalMuted = "rbxassetid://81559320299149",
+	PatternMuted = "rbxassetid://72120360636986",
 }
 
 -- Contains the image IDs of icons used to return to editing mode, indexed by
@@ -120,6 +147,9 @@ local WIDGET_ICON_IMAGE_IDS = {
 	Head = "rbxassetid://123921714663008",
 	Body = "rbxassetid://112231836235511",
 	Shirt = "rbxassetid://112967115722385",
+
+	HeadMuted = "rbxassetid://99155152631918",
+	BodyMuted = "rbxassetid://116758126178214",
 }
 
 -- Contains the image IDs of icons for regions of models, indexed by the
@@ -140,6 +170,12 @@ local REGION_ICON_IMAGE_IDS = {
 	Brim = "rbxassetid://99409227712971",
 	Band = "rbxassetid://104438137440192",
 	Crown = "rbxassetid://110312846318583",
+}
+
+local UI_IMAGE_IDS = {
+	ToggleOff = "rbxassetid://96061243919515",
+	ToggleOn = "rbxassetid://129923601024951",
+	OpacityPicker = "rbxassetid://79024368709423",
 }
 
 local REGION_ORDERING = {
@@ -221,6 +257,10 @@ local STYLE_TOKENS = {
 		Color3 = Color3.fromRGB(208, 217, 251),
 		Transparency = 0.88,
 	},
+	Shift_400 = {
+		Color3 = Color3.fromRGB(208, 217, 251),
+		Transparency = 0.84,
+	},
 	System_Contrast = {
 		Color3 = Color3.fromHex("F7F7F8"),
 		Transparency = 0,
@@ -263,25 +303,31 @@ local STYLE_TOKENS = {
 		Circle = UDim.new(0, 9999),
 	},
 
-	TitleLarge = {
-		Font = Enum.Font.BuilderSansBold,
-		FontSize = 20.16,
+	FontSize = {
+		FontSize_300 = 15.12,
+		FontSize_350 = 17.64,
+		FontSize_400 = 20.16,
+		FontSize_500 = 25.2,
+	},
+
+	FontWeight = {
+		FontWeight_400 = Enum.FontWeight.Regular,
+		FontWeight_600 = Enum.FontWeight.SemiBold,
+		FontWeight_700 = Enum.FontWeight.Bold,
 	},
 
 	IconButtonSize = UDim2.fromOffset(40, 40),
 
 	-- Local Menu Buttons
-	LocalMenuButtonSize = UDim2.fromOffset(44, 44),
+	LocalMenuButtonSize = UDim2.fromOffset(36, 36),
+
+	TopBarHeight = UDim.new(0, 58),
 
 	-- Panel
 	PanelHeaderSize = UDim2.new(1, 0, 0, 44),
 	PanelSize = UDim2.new(0, 320, 1, 0),
 	PanelMaxSize = Vector2.new(math.huge, 558), -- Max height only
 
-	ToolTitleFont = {
-		Font = Font.new(BUILDER_SANS_ASSET_ID, Enum.FontWeight.SemiBold),
-		FontSize = 17.64,
-	},
 	ToolTitleSize = UDim2.new(1, 0, 0, 16),
 
 	-- Pillbar
@@ -296,6 +342,9 @@ local STYLE_TOKENS = {
 	ColorDotSize = UDim2.fromOffset(18, 18),
 	ColorDotStrokeThickness = 3,
 
+	-- Toggle
+	TogglePillSize = UDim2.fromOffset(40, 24),
+
 	-- Slider
 	SliderBarSize = UDim2.new(1, 0, 0, 8),
 	SliderInputPadding = UDim.new(0, 6),
@@ -303,8 +352,6 @@ local STYLE_TOKENS = {
 	SliderHandleSize = UDim2.fromOffset(24, 24),
 
 	-- Grid Components
-	BaseTileMinSize = Vector2.new(80, 80),
-	BaseTileMaxSize = Vector2.new(160, 160),
 	GridTileSize = UDim2.fromOffset(80, 80),
 
 	-- Editing Handles
@@ -317,61 +364,99 @@ local STYLE_TOKENS = {
 
 	-- Toolbar
 	ToolbarButtonSize = UDim2.fromOffset(40, 40),
-	ToolbarParentPadding = UDim.new(0, 22), -- Centered with local menu buton
+	ToolbarParentPadding = UDim.new(0, 22), -- Centered with local menu button
 
 	-- Modal
-	ModalTitleFont = {
-		Font = Font.new(BUILDER_SANS_ASSET_ID, Enum.FontWeight.Bold),
-		FontSize = 25.2,
-	},
-	ModalBodyFont = {
-		Font = Font.new(BUILDER_SANS_ASSET_ID, Enum.FontWeight.Regular),
-		FontSize = 17.64,
-	},
-
 	ModalTwoButtonSize = UDim2.fromOffset(376, 0),
 	ModalThreeButtonSize = UDim2.fromOffset(480, 0),
 
-	ButtonFont = {
-		Font = Font.new(BUILDER_SANS_ASSET_ID, Enum.FontWeight.SemiBold),
-		FontSize = 17.64,
-	},
 	ButtonSize = UDim2.fromOffset(0, 40), -- X should be handled by flex
 
 	-- Avatar Preview
 	SegmentedControlPadding = UDim.new(0, 6),
 	SegmentedControlButtonSize = UDim2.fromOffset(140, 36),
-	SegmentedControlButtonFont = {
-		Font = Font.new(BUILDER_SANS_ASSET_ID, Enum.FontWeight.SemiBold),
-		FontSize = 20.16,
-	},
 
 	-- Progress bar
 	ProgressBarFrameSize = UDim2.new(1, 0, 0, 20),
 	ProgressBarBackgroundSize = UDim2.fromOffset(0, 4), -- Flex will handle X
 
-	ProgressLabelFont = {
-		Font = Font.new(BUILDER_SANS_ASSET_ID, Enum.FontWeight.SemiBold),
-		FontSize = 15.12,
-	},
-
 	-- Buy Button
 	BuyButtonSize = UDim2.fromOffset(131, 48),
-	BuyButtonFont = {
-		Font = Font.new(BUILDER_SANS_ASSET_ID, Enum.FontWeight.SemiBold),
-		FontSize = 20.16
+
+	-- Sticker Selector
+	MiniBaseTileGroupSize = UDim2.fromOffset(0, 40),
+	BaseTileMinSize = Vector2.new(40, 40),
+
+	ScrollBarImages = {
+		Top = "rbxassetid://76984408878669",
+		Middle = "rbxassetid://90051606532809",
+		Bottom = "rbxassetid://79403364428324",
 	},
+}
+
+local FONT_TOKENS = {
+	TitleLarge = {
+		Font = Font.new(BUILDER_SANS_ASSET_ID, STYLE_TOKENS.FontWeight.FontWeight_700),
+		FontSize = STYLE_TOKENS.FontSize.FontSize_400,
+	},
+
+	ToolTitleFont = {
+		Font = Font.new(BUILDER_SANS_ASSET_ID, STYLE_TOKENS.FontWeight.FontWeight_600),
+		FontSize = STYLE_TOKENS.FontSize.FontSize_350,
+	},
+
+	ModalTitleFont = {
+		Font = Font.new(BUILDER_SANS_ASSET_ID, STYLE_TOKENS.FontWeight.FontWeight_700),
+		FontSize = STYLE_TOKENS.FontSize.FontSize_500,
+	},
+	ModalBodyFont = {
+		Font = Font.new(BUILDER_SANS_ASSET_ID, STYLE_TOKENS.FontWeight.FontWeight_400),
+		FontSize = STYLE_TOKENS.FontSize.FontSize_350,
+	},
+	ButtonFont = {
+		Font = Font.new(BUILDER_SANS_ASSET_ID, STYLE_TOKENS.FontWeight.FontWeight_600),
+		FontSize = STYLE_TOKENS.FontSize.FontSize_350,
+	},
+
+	CounterLabelFont = {
+		Font = Font.new(BUILDER_SANS_ASSET_ID, STYLE_TOKENS.FontWeight.FontWeight_600),
+		FontSize = STYLE_TOKENS.FontSize.FontSize_300,
+	},
+
+	SegmentedControlButtonFont = {
+		Font = Font.new(BUILDER_SANS_ASSET_ID, STYLE_TOKENS.FontWeight.FontWeight_600),
+		FontSize = STYLE_TOKENS.FontSize.FontSize_400,
+	},
+
+	BuyButtonFont = {
+		Font = Font.new(BUILDER_SANS_ASSET_ID, STYLE_TOKENS.FontWeight.FontWeight_600),
+		FontSize = STYLE_TOKENS.FontSize.FontSize_400,
+	},
+}
+
+local MOBILE_WIDTH_CUTOFF = 1024
+
+local DEFAULT_COLOR_PICKER_COLOR = {
+	h = 0,
+	s = 1,
+	v = 1,
 }
 
 local StyleConsts = {
 	tags = TAGS,
 	icons = ICON_IMAGE_IDS,
 	styleTokens = STYLE_TOKENS,
+	fontTokens = FONT_TOKENS,
 	regionIcons = REGION_ICON_IMAGE_IDS,
 	regionOrdering = REGION_ORDERING,
 	modelDisplayName = MODEL_NAME_TO_DISPLAY_NAME,
 	widgetIcons = WIDGET_ICON_IMAGE_IDS,
 	editorIcons = EDITOR_ICON_IMAGE_IDS,
+	uiImages = UI_IMAGE_IDS,
+
+	-- Not in a group
+	MobileWidthCutoff = MOBILE_WIDTH_CUTOFF,
+	DefaultColorPickerColor = DEFAULT_COLOR_PICKER_COLOR,
 }
 
 return StyleConsts

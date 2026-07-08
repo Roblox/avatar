@@ -19,7 +19,7 @@ local ROBOT_REGIONMAP_INDIVIDUAL_TEXTURE = "rbxassetid://137458227705708"
 
 local SHIRT_REGIONMAP_TEXTURE = "rbxassetid://121897484607583"
 
-local HAT_REGIONMAP_TEXTURE = "rbxassetid://73042169298476"
+local HAT_REGIONMAP_TEXTURE = "rbxassetid://74223113441379"
 
 export type RegionMap = { [string]: Region }
 

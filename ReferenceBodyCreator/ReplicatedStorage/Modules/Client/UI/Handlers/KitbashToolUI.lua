@@ -4,40 +4,64 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Modules = ReplicatedStorage:WaitForChild("Modules")
-local Client = Modules:WaitForChild("Client")
-
 local Config = Modules:WaitForChild("Config")
 local Constants = require(Config:WaitForChild("Constants"))
+local KitbashData = require(Config:WaitForChild("KitbashData")) -- import for typechecking
 
-local UI = Client:WaitForChild("UI")
-local StyleConsts = require(UI:WaitForChild("StyleConsts"))
-local Utils = require(Modules:WaitForChild("Utils"))
+local UI = script.Parent.Parent
+
+local Style = UI:WaitForChild("Style")
+local StyleConsts = require(Style:WaitForChild("StyleConsts"))
+local StyleUtils = require(Style:WaitForChild("StyleUtils"))
+
 local Components = UI:WaitForChild("Components")
-
 local ProgressBar = require(Components:WaitForChild("ProgressBar"))
 local Panel = require(Components:WaitForChild("Panel"))
-local KitbashGrid = require(Components:WaitForChild("KitbashGrid"))
+local TileGrid = require(Components:WaitForChild("TileGrid"))
 
 local KitbashToolUI = {}
 KitbashToolUI.__index = KitbashToolUI
+
+function KitbashToolUI:createKitbashGridComponent()
+	local tileInfos = {}
+
+	-- We expect kitbashData.pieces to contain a name and thumbnail, and
+	-- possibly minScale and maxScale.
+	for _, kitbashPiece: KitbashData.KitbashData in pairs(self.kitbashData.pieces) do
+		local onClickCallback = function()
+			local minScale = kitbashPiece.minScale
+			local maxScale = kitbashPiece.maxScale
+			self.kitbashTool:SelectPiece(kitbashPiece.name, minScale, maxScale)
+			self:UpdateProgress()
+		end
+
+		local info = {
+			iconId = kitbashPiece.thumbnail,
+			callback = onClickCallback,
+		}
+		table.insert(tileInfos, info)
+	end
+
+	local grid = TileGrid.createComponentFrame(tileInfos)
+	grid.Name = "KitbashGrid"
+
+	return grid
+end
 
 function KitbashToolUI.new(onClosePanelCallback: () -> (), onDeleteCallback: () -> (), kitbashData, kitbashTool)
 	local self = {}
 	setmetatable(self, KitbashToolUI)
 
+	self.kitbashData = kitbashData
 	self.kitbashTool = kitbashTool
 
 	self.pieceCounter = ProgressBar.new(Constants.COUNTER_STRINGS.Kitbash, Constants.ATLAS_MAX_KITBASH_PIECES)
 	local pieceCounterFrame = self.pieceCounter.frame
 
-	local onAddPiece = function()
-		self:UpdateProgress()
-	end
-
 	local scrollingFrame = Instance.new("ScrollingFrame")
-	Utils.AddStyleTag(scrollingFrame, StyleConsts.tags.ScrollFrame)
+	StyleUtils.AddStyleTag(scrollingFrame, StyleConsts.tags.ScrollFrame)
 
-	local grid = KitbashGrid.createComponentFrame(kitbashData, kitbashTool, onAddPiece)
+	local grid = self:createKitbashGridComponent()
 	grid.Parent = scrollingFrame
 
 	self.panel = Panel.createComponentFrame(

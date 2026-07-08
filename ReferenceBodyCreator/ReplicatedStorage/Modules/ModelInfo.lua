@@ -67,7 +67,7 @@ function ModelInfo:InitializeMeshPartPositions()
 	end
 end
 
-function ModelInfo.new(model, blankData: BlanksData.BlankData): ModelInfoClass
+function ModelInfo.new(model, blankData: BlanksData.BlankData, creationPrice: number?): ModelInfoClass
 	local self = setmetatable({}, ModelInfo)
 
 	self.model = model
@@ -123,7 +123,7 @@ function ModelInfo.new(model, blankData: BlanksData.BlankData): ModelInfoClass
 
 	self.initialModelCFrame = self.model:GetPrimaryPartCFrame()
 
-	self.creationPrice = Utils:getPriceForCreation(self:GetCreationToken())
+	self.creationPrice = creationPrice or 0
 
 	return self
 end
@@ -188,8 +188,7 @@ function ModelInfo:GetWidgetMeshEditingEnabled()
 end
 
 function ModelInfo:GetRegionalStickerPatterningEnabled()
-	-- Disable regional sticker patterning on accessories
-	return self:GetCreationType() ~= Constants.CREATION_TYPES.Accessory
+	return self.blankData.enableStickerPatterning and self.blankData.enableRegionalStickerPatterning
 end
 
 function ModelInfo:GetPreviewScale()

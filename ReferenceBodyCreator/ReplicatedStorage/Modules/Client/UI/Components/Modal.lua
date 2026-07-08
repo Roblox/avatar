@@ -3,16 +3,17 @@
 	button has contrasting style.
 ]]
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Modules = ReplicatedStorage:WaitForChild("Modules")
-local Client = Modules:WaitForChild("Client")
-local UI = Client:WaitForChild("UI")
+local GamepadService = game:GetService("GamepadService")
+local UserInputService = game:GetService("UserInputService")
+
+local UI = script.Parent.Parent
+
+local Style = UI:WaitForChild("Style")
+local StyleConsts = require(Style:WaitForChild("StyleConsts"))
+local StyleUtils = require(Style:WaitForChild("StyleUtils"))
+
 local Components = UI:WaitForChild("Components")
-
 local TextButton = require(Components:WaitForChild("TextButton"))
-
-local Utils = require(Modules:WaitForChild("Utils"))
-local StyleConsts = require(UI:WaitForChild("StyleConsts"))
 
 local Modal = {}
 
@@ -21,13 +22,13 @@ function Modal.createComponentFrame(titleString: string, bodyString: string, but
 	modalFrame.Name = "ModalFrame"
 
 	-- Most styling is done via StyleSheets -- see UI/Style.lua
-	Utils.AddStyleTag(modalFrame, StyleConsts.tags.ModalFrame)
+	StyleUtils.AddStyleTag(modalFrame, StyleConsts.tags.ModalFrame)
 
 	-- Text
 	local textFrame = Instance.new("Frame")
 	textFrame.Name = "TextContainer"
 	textFrame.LayoutOrder = 1
-	Utils.AddStyleTag(textFrame, StyleConsts.tags.ModalTextFrame)
+	StyleUtils.AddStyleTag(textFrame, StyleConsts.tags.ModalTextFrame)
 	textFrame.Parent = modalFrame
 
 	-- Title
@@ -36,7 +37,7 @@ function Modal.createComponentFrame(titleString: string, bodyString: string, but
 	title.Text = titleString
 	title.Parent = textFrame
 	title.LayoutOrder = 1
-	Utils.AddStyleTag(title, StyleConsts.tags.ModalTitle)
+	StyleUtils.AddStyleTag(title, StyleConsts.tags.ModalTitle)
 
 	-- Body
 	local body = Instance.new("TextLabel")
@@ -44,12 +45,12 @@ function Modal.createComponentFrame(titleString: string, bodyString: string, but
 	body.Text = bodyString
 	body.Parent = textFrame
 	body.LayoutOrder = 2
-	Utils.AddStyleTag(body, StyleConsts.tags.ModalBody)
+	StyleUtils.AddStyleTag(body, StyleConsts.tags.ModalBody)
 
 	-- Buttons
 	local buttonFrame = Instance.new("Frame")
 	buttonFrame.Name = "ButtonContainer"
-	Utils.AddStyleTag(buttonFrame, StyleConsts.tags.ButtonFrame)
+	StyleUtils.AddStyleTag(buttonFrame, StyleConsts.tags.ButtonFrame)
 	buttonFrame.Parent = modalFrame
 	buttonFrame.LayoutOrder = 2
 
@@ -59,7 +60,7 @@ function Modal.createComponentFrame(titleString: string, bodyString: string, but
 		button.LayoutOrder = i
 		if i == 1 then
 			-- First button is emphasized
-			Utils.AddStyleTag(button, StyleConsts.tags.EmphasisButton)
+			StyleUtils.AddStyleTag(button, StyleConsts.tags.EmphasisButton)
 		end
 	end
 
@@ -68,6 +69,11 @@ function Modal.createComponentFrame(titleString: string, bodyString: string, but
 		modalFrame.Size = StyleConsts.styleTokens.ModalTwoButtonSize
 	else
 		modalFrame.Size = StyleConsts.styleTokens.ModalThreeButtonSize
+	end
+
+	-- Enable virtual cursor on console to interact with modal
+	if UserInputService.PreferredInput == Enum.PreferredInput.Gamepad then
+		GamepadService:EnableGamepadCursor(nil)
 	end
 
 	return modalFrame

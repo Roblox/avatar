@@ -6,23 +6,21 @@
 ]]
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local GamepadService = game:GetService("GamepadService")
+local UserInputService = game:GetService("UserInputService")
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")
-
-local Client = Modules:WaitForChild("Client")
-local Utils = require(Modules:WaitForChild("Utils"))
-local UI = Client:WaitForChild("UI")
-
-local Components = UI:WaitForChild("Components")
-
-local Overlay = require(Components:WaitForChild("Overlay"))
-local Modal = require(Components:WaitForChild("Modal"))
-
 local Config = Modules:WaitForChild("Config")
 local Constants = require(Config:WaitForChild("Constants"))
+local Utils = require(Modules:WaitForChild("Utils"))
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local UI = script.Parent.Parent
+local Components = UI:WaitForChild("Components")
+local Overlay = require(Components:WaitForChild("Overlay"))
+local Modal = require(Components:WaitForChild("Modal"))
 
 local SwitchEditorsModal = {}
 SwitchEditorsModal.__index = SwitchEditorsModal
@@ -57,7 +55,7 @@ function SwitchEditorsModal.new(style, creationPrice: number, onBuy: () -> (), o
 				onBuy()
 			end,
 		},
-		-- Cancel button
+		-- Continue button
 		{
 			text = "Continue",
 			callback = function()
@@ -86,6 +84,11 @@ function SwitchEditorsModal.new(style, creationPrice: number, onBuy: () -> (), o
 end
 
 function SwitchEditorsModal:Destroy()
+	if UserInputService.PreferredInput == Enum.PreferredInput.Gamepad then
+		-- Disable virtual cursor on console when leaving edit mode
+		GamepadService:DisableGamepadCursor(nil)
+	end
+
 	-- We only need this to exist when it is first created, so we destroy it
 	-- immediately rather than hiding it. Additionally, this should be called
 	-- before our callbacks, in case the callbacks take time to execute.

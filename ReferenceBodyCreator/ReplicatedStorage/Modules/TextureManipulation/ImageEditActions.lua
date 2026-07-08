@@ -25,10 +25,12 @@ local ImageEditActions = {}
 export type RecolorActionMetadata = {
 	color: Color3,
 	targetMeshPartName: MeshPart,
+	opacity: number?,
+	isReflectiveMode: boolean?,
 }
 
 local function GetSizeForTextureBuffer(modelInfo, colorMap)
-	if modelInfo:GetCreationType() ~= Constants.CREATION_TYPES.Accessory then
+	if not modelInfo:GetKitbashingEnabled() then
 		return colorMap.Size
 	end
 
@@ -62,21 +64,30 @@ ImageEditActions.RecolorAction = {
 	ExecuteAction = function(modelInfo, actionMetaData: RecolorActionMetadata)
 		local targetMeshPart = modelInfo:GetMeshPartByName(actionMetaData.targetMeshPartName)
 		local textureInfo = modelInfo:GetTextureInfo()
-		local colorMap: EditableImage = textureInfo:GetBaseLayer(targetMeshPart)
+		local colorMap: EditableImage = textureInfo:GetOrCreateLayer(targetMeshPart, Constants.FABRIC_FILL_LAYER)
 
 		colorMap:DrawRectangle(
 			Vector2.new(0, 0),
 			GetAtlasBaseSize(modelInfo, colorMap),
 			actionMetaData.color,
-			0,
+			1 - actionMetaData.opacity,
 			Enum.ImageCombineType.Overwrite
 		)
+
+		TextureUtils.ApplyPBRMaps(textureInfo, targetMeshPart, actionMetaData.isReflectiveMode)
 	end,
 }
 
 export type RecolorRegionActionMetadata = {
 	color: Color3,
 	regionName: string,
+	opacity: number?,
+	isReflectiveMode: boolean?,
+}
+
+export type ApplyPBRToRegionActionMetadata = {
+	regionName: string,
+	isReflectiveMode: boolean?,
 }
 
 local function GetUniqueEditableImages(
@@ -88,9 +99,9 @@ local function GetUniqueEditableImages(
 
 	for _, meshPartName in pairs(meshPartNames) do
 		local meshPart = modelInfo:GetMeshPartByName(meshPartName)
-		local colorMap = textureInfo:GetBaseLayer(meshPart)
+		local colorMap = textureInfo:GetOrCreateLayer(meshPart, Constants.FABRIC_FILL_LAYER)
 
-		uniqueEditableImages[colorMap] = true
+		uniqueEditableImages[colorMap] = meshPartName
 	end
 
 	return uniqueEditableImages
@@ -116,49 +127,43 @@ ImageEditActions.RecolorRegionAction = {
 
 		local uniqueEditableImages = GetUniqueEditableImages(modelInfo, textureInfo, region.meshPartNames)
 
+		local opacity = if actionMetaData.opacity then actionMetaData.opacity else 1
+
 		if region.regionBuffer then
 			assert(region.regionColor, "Region color must be defined if regionBuffer is defined")
 
-			for colorMap: EditableImage, _ in uniqueEditableImages do
+			for colorMap: EditableImage, targetMeshPartName in uniqueEditableImages do
 				local textureSize = GetSizeForTextureBuffer(modelInfo, colorMap)
-
 				local currentPixelsBuffer = colorMap:ReadPixelsBuffer(Vector2.zero, textureSize)
 				local regionPixelsBuffer = region.regionBuffer
-
-				local regionR255 = region.regionColor.r
-				local regionG255 = region.regionColor.g
-				local regionB255 = region.regionColor.b
-
-				local colorR255 = actionMetaData.color.R * 255
-				local colorG255 = actionMetaData.color.G * 255
-				local colorB255 = actionMetaData.color.B * 255
+				local fillAlphaByte = math.floor(255 * opacity)
+				fillAlphaByte = math.clamp(fillAlphaByte, 0, 255)
 
 				if buffer.len(regionPixelsBuffer) == buffer.len(currentPixelsBuffer) then
-					-- Only pixels where the region color matches the region image color are recolored
-					for i = 0, buffer.len(currentPixelsBuffer) - 1, 4 do
-						if
-							buffer.readu8(regionPixelsBuffer, i) == regionR255
-							and buffer.readu8(regionPixelsBuffer, i + 1) == regionG255
-							and buffer.readu8(regionPixelsBuffer, i + 2) == regionB255
-						then
-							buffer.writeu8(currentPixelsBuffer, i, colorR255)
-							buffer.writeu8(currentPixelsBuffer, i + 1, colorG255)
-							buffer.writeu8(currentPixelsBuffer, i + 2, colorB255)
-						end
-					end
+					TextureUtils.PerformRegionColor(
+						currentPixelsBuffer,
+						region,
+						actionMetaData.color,
+						colorMap,
+						textureSize,
+						fillAlphaByte
+					)
 				else
-					-- In the case colorMap is smaller than region map, determine the scale difference
 					TextureUtils.WriteBufferForLargerRegionMap(
 						textureSize,
 						regionPixelsBuffer,
 						currentPixelsBuffer,
 						region.regionColor,
-						actionMetaData.color
+						actionMetaData.color,
+						fillAlphaByte
 					)
 				end
 
 				colorMap:WritePixelsBuffer(Vector2.zero, textureSize, currentPixelsBuffer)
 			end
+
+			-- Apply PBR to region: isReflectiveMode determines color of metalness & roughness maps
+			TextureUtils.ApplyPBRToRegion(modelInfo, textureInfo, region, actionMetaData.isReflectiveMode)
 		else
 			for colorMap, _ in uniqueEditableImages do
 				local textureSize = GetSizeForTextureBuffer(modelInfo, colorMap)
@@ -166,11 +171,36 @@ ImageEditActions.RecolorRegionAction = {
 					Vector2.new(0, 0),
 					textureSize,
 					actionMetaData.color,
-					0,
+					1 - opacity,
 					Enum.ImageCombineType.Overwrite
 				)
 			end
 		end
+
+		TextureUtils.ApplyPBRToRegion(
+			modelInfo,
+			textureInfo,
+			region,
+			actionMetaData.isReflectiveMode
+		)
+	end,
+}
+
+ImageEditActions.ApplyPBRToRegionAction = {
+	IsValidAction = function(modelInfo, actionMetaData: ApplyPBRToRegionActionMetadata)
+		if actionMetaData.regionName == nil then
+			return false
+		end
+
+		local textureInfo: TextureInfo.TextureInfoClass = modelInfo:GetTextureInfo()
+
+		return textureInfo:HasRegion(actionMetaData.regionName)
+	end,
+	ExecuteAction = function(modelInfo: ModelInfo.ModelInfoClass, actionMetaData: ApplyPBRToRegionActionMetadata)
+		local textureInfo: TextureInfo.TextureInfoClass = modelInfo:GetTextureInfo()
+		local region: TextureInfo.Region = textureInfo:GetRegion(actionMetaData.regionName)
+
+		TextureUtils.ApplyPBRToRegion(modelInfo, textureInfo, region, actionMetaData.isReflectiveMode)
 	end,
 }
 
@@ -248,6 +278,7 @@ ImageEditActions.ClearBrushAction = {
 		local brushLayer: EditableImage = textureInfo:GetOrCreateLayer(targetMeshPart, Constants.BRUSH_LAYER)
 
 		TextureUtils.Clear(brushLayer)
+		TextureUtils.ClearPBR(textureInfo, targetMeshPart)
 	end,
 }
 
@@ -501,7 +532,7 @@ ImageEditActions.ProjectedStickerAction = {
 			ColorBlendType = Enum.ImageCombineType.BlendSourceOver,
 			AlphaBlendType = Enum.ImageAlphaType.Default,
 			BlendIntensity = 1,
-			FadeAngle = 90.0,
+			FadeAngle = 45.0,
 		}
 
 		local meshInfo = modelInfo:GetMeshInfo()
@@ -560,6 +591,8 @@ ImageEditActions.TiledStickerAction = {
 			targetMeshPart,
 			Constants.STICKER_LAYER_PREFIX .. actionMetaData.stickerLayerNumber
 		)
+		local isAccessory = modelInfo:GetCreationType() == Constants.CREATION_TYPES.Accessory
+		local kitbashingEnabled = modelInfo:GetKitbashingEnabled()
 
 		if not didCreateLayer then
 			TextureUtils.Clear(stickerLayer)
@@ -576,7 +609,12 @@ ImageEditActions.TiledStickerAction = {
 
 		local globalScale = 0.5
 
-		local clampScale = math.max(actionMetaData.scale, 0.5)
+		local clampScale = math.max(
+			actionMetaData.scale,
+			if isAccessory
+				then Constants.DEFAULT_TILED_STICKER_SCALE * Constants.ACCESSORY_STICKER_SCALE
+				else Constants.DEFAULT_TILED_STICKER_SCALE
+		)
 		local upScale = actionMetaData.tilePadding + (clampScale * stickerTexture.Size.Y * globalScale)
 		local rightScale = actionMetaData.tilePadding + (clampScale * stickerTexture.Size.X * globalScale)
 
@@ -606,10 +644,10 @@ ImageEditActions.TiledStickerAction = {
 		local upVec = Vector2.new(upVec3.x, upVec3.y) * upScale
 		local rightVec = Vector2.new(rightVec3.x, rightVec3.y) * rightScale
 
-		local leftLimit, rightLimit =
-			GetSideLengthFromNormal(actionMetaData.texturePosition, rightVec.Unit, stickerLayer.Size)
-		local upLimit, downLimit =
-			GetSideLengthFromNormal(actionMetaData.texturePosition, upVec.Unit, stickerLayer.Size)
+		local layerSize = if kitbashingEnabled then stickerLayer.Size / Constants.ATLAS_GRID_SIZE else stickerLayer.Size
+
+		local leftLimit, rightLimit = GetSideLengthFromNormal(actionMetaData.texturePosition, rightVec.Unit, layerSize)
+		local upLimit, downLimit = GetSideLengthFromNormal(actionMetaData.texturePosition, upVec.Unit, layerSize)
 
 		leftLimit = math.floor(leftLimit / rightScale) -- - 1
 		rightLimit = math.ceil(rightLimit / rightScale) -- + 1
@@ -617,26 +655,63 @@ ImageEditActions.TiledStickerAction = {
 		upLimit = math.floor(upLimit / upScale) -- - 1
 		downLimit = math.ceil(downLimit / upScale) -- + 1
 
-		local prevBuffer = stickerLayer:ReadPixelsBuffer(Vector2.zero, stickerLayer.Size)
-
 		local scaleVector = Vector2.new(clampScale, clampScale) * globalScale
-		for yIter = leftLimit, rightLimit do
-			for xIter = upLimit, downLimit do
-				stickerLayer:DrawImageTransformed(
-					actionMetaData.texturePosition + (yIter * rightVec) + (xIter * upVec),
-					scaleVector,
-					actionMetaData.rotation,
-					stickerTexture,
-					{
-						CombineType = Enum.ImageCombineType.BlendSourceOver,
-						SamplingMode = Enum.ResamplerMode.Default,
-					}
-				)
-			end
-		end
 
-		local currentRegion = textureInfo:GetRegion(actionMetaData.regionName)
-		TextureUtils.PerformRegionStencil(currentRegion, prevBuffer, stickerLayer)
+		-- If creation is kitbashable, create a temporary layer to draw the tiled sticker onto that
+		-- represents only the cell in the atlas representing the accessory texture
+
+		if kitbashingEnabled then
+			local temporaryLayer = AssetService:CreateEditableImage({ Size = layerSize })
+			if not temporaryLayer then
+				error(Constants.FAILED_TO_CREATE_EI_MSG)
+				return
+			end
+
+			local prevBuffer = stickerLayer:ReadPixelsBuffer(Vector2.zero, temporaryLayer.Size)
+
+			for yIter = leftLimit, rightLimit do
+				for xIter = upLimit, downLimit do
+					temporaryLayer:DrawImageTransformed(
+						actionMetaData.texturePosition + (yIter * rightVec) + (xIter * upVec),
+						scaleVector,
+						actionMetaData.rotation,
+						stickerTexture,
+						{
+							CombineType = Enum.ImageCombineType.BlendSourceOver,
+							SamplingMode = Enum.ResamplerMode.Default,
+						}
+					)
+				end
+			end
+
+			local currentRegion = textureInfo:GetRegion(actionMetaData.regionName)
+
+			TextureUtils.PerformRegionStencil(currentRegion, prevBuffer, temporaryLayer)
+
+			stickerLayer:DrawImage(Vector2.zero, temporaryLayer, Enum.ImageCombineType.Overwrite)
+
+			temporaryLayer:Destroy()
+		else
+			local prevBuffer = stickerLayer:ReadPixelsBuffer(Vector2.zero, stickerLayer.Size)
+
+			for yIter = leftLimit, rightLimit do
+				for xIter = upLimit, downLimit do
+					stickerLayer:DrawImageTransformed(
+						actionMetaData.texturePosition + (yIter * rightVec) + (xIter * upVec),
+						scaleVector,
+						actionMetaData.rotation,
+						stickerTexture,
+						{
+							CombineType = Enum.ImageCombineType.BlendSourceOver,
+							SamplingMode = Enum.ResamplerMode.Default,
+						}
+					)
+				end
+			end
+
+			local currentRegion = textureInfo:GetRegion(actionMetaData.regionName)
+			TextureUtils.PerformRegionStencil(currentRegion, prevBuffer, stickerLayer)
+		end
 	end,
 }
 
@@ -656,14 +731,11 @@ ImageEditActions.ClearAction = {
 		local targetMeshPart = modelInfo:GetMeshPartByName(actionMetaData.targetMeshPartName)
 		local textureInfo: TextureInfo.TextureInfoClass = modelInfo:GetTextureInfo()
 
-		local originalTextureId = textureInfo:GetOriginalTextureId(targetMeshPart)
+		local colorMap: EditableImage = textureInfo:GetOrCreateLayer(targetMeshPart, Constants.FABRIC_FILL_LAYER)
 
-		local originalEditableImage = AssetService:CreateEditableImageAsync(Content.fromUri(originalTextureId))
+		colorMap:DrawRectangle(Vector2.new(0, 0), colorMap.Size, Color3.new(), 1.0, Enum.ImageCombineType.Overwrite)
 
-		local colorMap: EditableImage = textureInfo:GetBaseLayer(targetMeshPart)
-
-		colorMap:DrawImage(Vector2.zero, originalEditableImage, Enum.ImageCombineType.Overwrite)
-		originalEditableImage:Destroy()
+		TextureUtils.ClearPBR(textureInfo, targetMeshPart)
 
 		return colorMap
 	end,
@@ -688,21 +760,17 @@ ImageEditActions.ClearRegionAction = {
 		return true
 	end,
 	ExecuteAction = function(modelInfo: ModelInfo.ModelInfoClass, actionMetaData: ClearRegionActionMetadata)
-		--local targetMeshPart = modelInfo:GetMeshPartByName(actionMetaData.targetMeshPartName)
 		local textureInfo: TextureInfo.TextureInfoClass = modelInfo:GetTextureInfo()
 		local region: TextureInfo.Region = textureInfo:GetRegion(actionMetaData.regionName)
 
 		local clearMeshPartName = region.meshPartNames[1]
 		local targetMeshPart = modelInfo:GetMeshPartByName(clearMeshPartName)
 
-		local originalTextureId = textureInfo:GetOriginalTextureId(targetMeshPart)
-		local originalEditableImage = AssetService:CreateEditableImageAsync(Content.fromUri(originalTextureId))
-		local colorMap: EditableImage = textureInfo:GetBaseLayer(targetMeshPart)
+		local colorMap: EditableImage = textureInfo:GetOrCreateLayer(targetMeshPart, Constants.FABRIC_FILL_LAYER)
 
 		if region.regionBuffer then
 			assert(region.regionColor, "Region color must be defined if regionBuffer is defined")
 
-			local originalBuffer = originalEditableImage:ReadPixelsBuffer(Vector2.zero, originalEditableImage.Size)
 			local currentPixelsBuffer = colorMap:ReadPixelsBuffer(Vector2.zero, colorMap.Size)
 			local regionPixelsBuffer = region.regionBuffer
 
@@ -720,15 +788,18 @@ ImageEditActions.ClearRegionAction = {
 					buffer.writeu8(currentPixelsBuffer, i, buffer.readu8(originalBuffer, i))
 					buffer.writeu8(currentPixelsBuffer, i + 1, buffer.readu8(originalBuffer, i + 1))
 					buffer.writeu8(currentPixelsBuffer, i + 2, buffer.readu8(originalBuffer, i + 2))
+					buffer.writeu8(currentPixelsBuffer, i + 3, buffer.readu8(originalBuffer, i + 3))
 				end
 			end
 
 			colorMap:WritePixelsBuffer(Vector2.zero, colorMap.Size, currentPixelsBuffer)
+
+			-- Clear PBR for region
+			TextureUtils.ApplyPBRToRegion(modelInfo, textureInfo, region, false --[[isReflective]])
 		else
 			colorMap:DrawImage(Vector2.zero, originalEditableImage, Enum.ImageCombineType.Overwrite)
+			TextureUtils.ClearPBR(textureInfo, targetMeshPart)
 		end
-
-		originalEditableImage:Destroy()
 
 		return colorMap
 	end,
@@ -742,6 +813,10 @@ export type ProjectionBrushActionMetadata = {
 	alphaBlendType: Enum.ImageAlphaType,
 	cameraCFrame: CFrame,
 	drawPositions: { Vector2 },
+	isReflectiveMode: boolean?,
+	brushTransparency: number?,
+	intermediateEditableImageBuffer: buffer,
+	cachedTargetImageBuffer: buffer
 }
 
 ImageEditActions.ProjectionBrushAction = {
@@ -764,9 +839,19 @@ ImageEditActions.ProjectionBrushAction = {
 		local referenceMeshPart = modelInfo:GetMeshPartByName(actionMetaData.referenceMeshPartName)
 		local textureInfo = modelInfo:GetTextureInfo()
 		local targetLayer: EditableImage = textureInfo:GetOrCreateLayer(referenceMeshPart, Constants.BRUSH_LAYER)
+		local isErasing = actionMetaData.alphaBlendType ~= Enum.ImageAlphaType.Default
 
-		local sourceAlpha = actionMetaData.alphaBlendType == Enum.ImageAlphaType.Default and 1.0 or 0.0
-		local targetAlpha = actionMetaData.alphaBlendType == Enum.ImageAlphaType.Default and 0.0 or 1.0
+		local intermediateEditableImage = nil
+		local imageToDrawOn = targetLayer
+		if not isErasing then
+			intermediateEditableImage = textureInfo:GetMemorySafeEditableImage(nil, targetLayer.Size)
+			intermediateEditableImage:WritePixelsBuffer(Vector2.zero, targetLayer.Size, actionMetaData.intermediateEditableImageBuffer)
+
+			imageToDrawOn = intermediateEditableImage
+		end
+
+		local sourceAlpha = if not isErasing then 1.0 else 0.0
+		local targetAlpha = if not isErasing then 0.0 else 1.0
 
 		local projectionBrushCircleTexture, projectionBrushLineTexture, circleBrushConfig, lineBrushConfig =
 			TextureUtils.CreateAndSetupProjectionBrushTexturesAndConfigs(
@@ -776,6 +861,14 @@ ImageEditActions.ProjectionBrushAction = {
 				actionMetaData.colorBlendType,
 				actionMetaData.alphaBlendType
 			)
+
+		local pbrInfo, pbrBrushTextures = TextureUtils.GeneratePBRInfo(
+			actionMetaData.alphaBlendType ~= Enum.ImageAlphaType.Default,
+			actionMetaData.isReflectiveMode,
+			textureInfo:GetRoughnessMap(referenceMeshPart),
+			textureInfo:GetMetalnessMap(referenceMeshPart),
+			textureInfo:GetNormalMap(referenceMeshPart)
+		)
 
 		local meshInfo = modelInfo:GetMeshInfo()
 		local allEditableMesh = meshInfo:GetEditableMeshMap()
@@ -806,7 +899,8 @@ ImageEditActions.ProjectionBrushAction = {
 						pbResult.castedUp,
 						circleBrushConfig,
 						lineBrushConfig,
-						targetLayer
+						imageToDrawOn,
+						pbrInfo
 					)
 				end
 			end
@@ -814,8 +908,20 @@ ImageEditActions.ProjectionBrushAction = {
 			lastCastedPoint = castedPoint
 		end
 
+		-- In order to paint with transparency, we paint to an intermediate EI which we then apply the
+		-- desired alpha value before drawing it to our target EI. This way we get consistent transparency
+		-- across the stroke.
+		if not isErasing then
+			TextureUtils.ApplyAlpha(intermediateEditableImage, actionMetaData.brushTransparency)
+			targetLayer:WritePixelsBuffer(Vector2.zero, targetLayer.Size, actionMetaData.cachedTargetImageBuffer)
+			targetLayer:DrawImage(Vector2.zero, intermediateEditableImage, Enum.ImageCombineType.BlendSourceOver)
+		end
+
 		projectionBrushLineTexture:Destroy()
 		projectionBrushCircleTexture:Destroy()
+		for _, pbrBrushTexture in pairs(pbrBrushTextures) do
+			pbrBrushTexture:Destroy()
+		end
 	end,
 }
 

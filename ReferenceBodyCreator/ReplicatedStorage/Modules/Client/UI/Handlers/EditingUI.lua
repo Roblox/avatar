@@ -7,23 +7,6 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")
-
-local Client = Modules:WaitForChild("Client")
-local UI = Client:WaitForChild("UI")
-
-local Utils = require(Modules:WaitForChild("Utils"))
-local StyleConsts = require(UI:WaitForChild("StyleConsts"))
-local Components = UI:WaitForChild("Components")
-
-local Toolbar = require(Components:WaitForChild("Toolbar"))
-
-local BrushToolUI = require(UI:WaitForChild("BrushToolUI"))
-local EraserToolUI = require(UI:WaitForChild("EraserToolUI"))
-local FillToolUI = require(UI:WaitForChild("FillToolUI"))
-local StickerToolUI = require(UI:WaitForChild("StickerToolUI"))
-local StickerPatternToolUI = require(UI:WaitForChild("StickerPatternToolUI"))
-local KitbashToolUI = require(UI:WaitForChild("KitbashToolUI"))
-
 local Config = Modules:WaitForChild("Config")
 local Constants = require(Config:WaitForChild("Constants"))
 local StickerData = require(Config:WaitForChild("StickerData"))
@@ -31,6 +14,23 @@ local KitbashData = require(Config:WaitForChild("KitbashData"))
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local UI = script.Parent.Parent
+
+local Style = UI:WaitForChild("Style")
+local StyleConsts = require(Style:WaitForChild("StyleConsts"))
+local StyleUtils = require(Style:WaitForChild("StyleUtils"))
+
+local Handlers = UI:WaitForChild("Handlers")
+local BrushToolUI = require(Handlers.BrushToolUI)
+local EraserToolUI = require(Handlers.EraserToolUI)
+local FillToolUI = require(Handlers.FillToolUI)
+local StickerToolUI = require(Handlers.StickerToolUI)
+local StickerPatternToolUI = require(Handlers.StickerPatternToolUI)
+local KitbashToolUI = require(Handlers.KitbashToolUI)
+
+local Components = UI:WaitForChild("Components")
+local Toolbar = require(Components:WaitForChild("Toolbar"))
 
 local EditingUI = {}
 EditingUI.__index = EditingUI
@@ -42,6 +42,13 @@ function EditingUI:CreateFillToolUI()
 	end
 	local ColorPickerCallback = function(color, isFinalInput)
 		self.fabricTool:ApplyColor(color, isFinalInput)
+	end
+	local ReflectiveModeCallback = function(isReflectiveMode)
+		self.fabricTool:SetIsReflective(isReflectiveMode)
+		self.fabricTool:ReapplyFillForReflectivity()
+	end
+	local OpacityPickerCallback = function(opacity)
+		self.fabricTool:SetOpacity(opacity)
 	end
 	local DeleteCallback = function()
 		self.fabricTool:ClearAll()
@@ -57,7 +64,9 @@ function EditingUI:CreateFillToolUI()
 		DeleteCallback,
 		regionParts,
 		SelectedRegionCallback,
-		ColorPickerCallback
+		ColorPickerCallback,
+		ReflectiveModeCallback,
+		OpacityPickerCallback
 	)
 	self.fillToolUI.panel.Parent = self.panelParent
 end
@@ -156,6 +165,12 @@ function EditingUI:CreateBrushToolUI()
 	local onColorChangedCallback = function(color, _isFinalInput)
 		self.brushTool:OnColorChanged(color)
 	end
+	local ReflectiveModeCallback = function(isReflectiveMode)
+		self.brushTool:SetIsReflective(isReflectiveMode)
+	end
+	local TransparencyPickerCallback = function(transparency)
+		self.brushTool:SetTransparency(transparency)
+	end
 
 	self.brushToolUI = BrushToolUI.new(
 		self.inputManager,
@@ -163,15 +178,17 @@ function EditingUI:CreateBrushToolUI()
 		onDeleteCallback,
 		defaultSliderVal,
 		onSliderChangedCallback,
-		onColorChangedCallback
+		onColorChangedCallback,
+		ReflectiveModeCallback,
+		TransparencyPickerCallback
 	)
 
 	-- Set default brush color
 	self.brushTool:OnColorChanged(
 		Color3.fromHSV(
-			Constants.DefaultColorPickerColor.h,
-			Constants.DefaultColorPickerColor.s,
-			Constants.DefaultColorPickerColor.v
+			StyleConsts.DefaultColorPickerColor.h,
+			StyleConsts.DefaultColorPickerColor.s,
+			StyleConsts.DefaultColorPickerColor.v
 		)
 	)
 
@@ -247,6 +264,7 @@ function EditingUI:GetMeshEditingGroup()
 	for _, name in widgetGroupNames do
 		local buttonInfo = {
 			iconId = StyleConsts.widgetIcons[name],
+			mutedIconId = StyleConsts.widgetIcons[name .. "Muted"],
 			callback = function()
 				self:OpenWidgetControls(name)
 			end,
@@ -263,6 +281,7 @@ function EditingUI:SetupToolbar()
 		-- Paintbrush
 		{
 			iconId = StyleConsts.icons.Paintbrush,
+			mutedIconId = StyleConsts.icons.PaintbrushMuted,
 			callback = function()
 				self:onOpenPanel()
 				self.brushTool:SetStatePainting()
@@ -274,6 +293,7 @@ function EditingUI:SetupToolbar()
 		-- Eraser
 		{
 			iconId = StyleConsts.icons.Eraser,
+			mutedIconId = StyleConsts.icons.EraserMuted,
 			callback = function()
 				self:onOpenPanel()
 				self.brushTool:SetStateErasing()
@@ -301,10 +321,11 @@ function EditingUI:SetupToolbar()
 		-- Sticker
 		{
 			iconId = StyleConsts.icons.Decal,
+			mutedIconId = StyleConsts.icons.DecalMuted,
 			callback = function()
 				self:onOpenPanel()
-				self.stickerToolUI:Open()
 				self.stickerTool:Enable()
+				self.stickerToolUI:Open()
 				self.manager:PanToLeft()
 			end,
 		},
@@ -313,6 +334,7 @@ function EditingUI:SetupToolbar()
 		-- Patterns
 		local patternsButton = {
 			iconId = StyleConsts.icons.Pattern,
+			mutedIconId = StyleConsts.icons.PatternMuted,
 			callback = function()
 				self:onOpenPanel()
 				self.stickerPatternToolUI:Open()
@@ -353,7 +375,10 @@ function EditingUI:SetupToolbar()
 		table.insert(toolbarGroups, meshWidgetGroup)
 	end
 
-	self.toolbar = Toolbar.new(toolbarGroups)
+	self.toolbar = Toolbar.new(toolbarGroups, function()
+		-- On reselect
+		self:onClosePanel()
+	end)
 end
 
 function EditingUI:onOpenPanel()
@@ -396,17 +421,17 @@ function EditingUI.new(baseUI, manager, fabricTool, stickerTool, brushTool, kitb
 
 	-- Setup partitions for toolbar and panel
 	local frame = Instance.new("Frame")
-	Utils.AddStyleTag(frame, StyleConsts.tags.UIParent)
+	StyleUtils.AddStyleTag(frame, StyleConsts.tags.UIParent)
 	frame.Parent = self.screenGui
 	frame.Name = "UIParent"
 
 	local toolbarParent = Instance.new("Frame")
-	Utils.AddStyleTag(toolbarParent, StyleConsts.tags.ToolbarParent)
+	StyleUtils.AddStyleTag(toolbarParent, StyleConsts.tags.ToolbarParent)
 	toolbarParent.Parent = frame
 	toolbarParent.Name = "ToolbarParent"
 
 	self.panelParent = Instance.new("Frame")
-	Utils.AddStyleTag(self.panelParent, StyleConsts.tags.PanelParent)
+	StyleUtils.AddStyleTag(self.panelParent, StyleConsts.tags.PanelParent)
 	self.panelParent.Parent = frame
 	self.panelParent.Name = "PanelParent"
 

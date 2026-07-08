@@ -3,14 +3,13 @@
 	stickers and kitbashing.
 ]]
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Modules = ReplicatedStorage:WaitForChild("Modules")
-local Client = Modules:WaitForChild("Client")
-local UI = Client:WaitForChild("UI")
-local Components = UI:WaitForChild("Components")
+local UI = script.Parent.Parent
 
-local Utils = require(Modules:WaitForChild("Utils"))
-local StyleConsts = require(UI:WaitForChild("StyleConsts"))
+local Style = UI:WaitForChild("Style")
+local StyleConsts = require(Style:WaitForChild("StyleConsts"))
+local StyleUtils = require(Style:WaitForChild("StyleUtils"))
+
+local Components = UI:WaitForChild("Components")
 local IconButton = require(Components:WaitForChild("IconButton"))
 
 local BaseTile = {}
@@ -18,11 +17,15 @@ local BaseTile = {}
 function BaseTile.createComponentFrame(imageAssetId, onButtonActivated)
 	local frame = Instance.new("Frame")
 	frame.Name = "BaseTile"
-	Utils.AddStyleTag(frame, StyleConsts.tags.BaseTile)
+	StyleUtils.AddStyleTag(frame, StyleConsts.tags.BaseTile)
+
+	if not imageAssetId then
+		return frame
+	end
 
 	local button = IconButton.createComponentFrame(imageAssetId, onButtonActivated)
 	button.Parent = frame
-	Utils.AddStyleTag(button, StyleConsts.tags.BaseTileButton)
+	StyleUtils.AddStyleTag(button, StyleConsts.tags.BaseTileButton)
 
 	return frame
 end

@@ -3,14 +3,13 @@
 	Dynamically restyles for mobile and desktop.
 ]]
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Modules = ReplicatedStorage:WaitForChild("Modules")
-local Client = Modules:WaitForChild("Client")
-local UI = Client:WaitForChild("UI")
-local Components = UI:WaitForChild("Components")
+local UI = script.Parent.Parent
 
-local Utils = require(Modules:WaitForChild("Utils"))
-local StyleConsts = require(UI:WaitForChild("StyleConsts"))
+local Style = UI:WaitForChild("Style")
+local StyleConsts = require(Style:WaitForChild("StyleConsts"))
+local StyleUtils = require(Style:WaitForChild("StyleUtils"))
+
+local Components = UI:WaitForChild("Components")
 local IconButton = require(Components:WaitForChild("IconButton"))
 
 local Panel = {}
@@ -18,7 +17,7 @@ local Panel = {}
 local function createHeaderBar(title, onClose, onTrash)
 	local headerBar = Instance.new("Frame")
 	headerBar.Name = "PanelHeaderBar"
-	Utils.AddStyleTag(headerBar, StyleConsts.tags.PanelHeader)
+	StyleUtils.AddStyleTag(headerBar, StyleConsts.tags.PanelHeader)
 
 	-- Title
 	local titleLabel = Instance.new("TextLabel")
@@ -34,17 +33,17 @@ local function createHeaderBar(title, onClose, onTrash)
 	local trashButton = IconButton.createComponentFrame(StyleConsts.icons.Delete, onTrash)
 	trashButton.Parent = iconsFrame
 	trashButton.LayoutOrder = 3
-	Utils.AddStyleTag(trashButton, StyleConsts.tags.MediumIconButton)
+	StyleUtils.AddStyleTag(trashButton, StyleConsts.tags.MediumIconButton)
 
 	local closeButton = IconButton.createComponentFrame(StyleConsts.icons.XButton, onClose)
 	closeButton.Parent = iconsFrame
 	closeButton.LayoutOrder = 4
-	Utils.AddStyleTag(closeButton, StyleConsts.tags.MediumIconButton)
+	StyleUtils.AddStyleTag(closeButton, StyleConsts.tags.MediumIconButton)
 
 	return headerBar
 end
 
-function Panel.createComponentFrame(title, onClose, onTrash, toolFrames: {GuiObject})
+function Panel.createComponentFrame(title, onClose, onTrash, toolFrames: { GuiObject })
 	local self = {}
 	setmetatable(self, Panel)
 
@@ -52,14 +51,14 @@ function Panel.createComponentFrame(title, onClose, onTrash, toolFrames: {GuiObj
 	self.panel.Name = "Panel"
 
 	-- Most styling is done via StyleSheets -- see UI/Style.lua
-	Utils.AddStyleTag(self.panel, StyleConsts.tags.Panel)
+	StyleUtils.AddStyleTag(self.panel, StyleConsts.tags.Panel)
 
 	local headerBar = createHeaderBar(title, onClose, onTrash)
 	headerBar.Parent = self.panel
 
 	local toolsContainer = Instance.new("Frame")
 	toolsContainer.Name = "ToolsContainer"
-	Utils.AddStyleTag(toolsContainer, StyleConsts.tags.PanelToolsContainer)
+	StyleUtils.AddStyleTag(toolsContainer, StyleConsts.tags.PanelToolsContainer)
 	for i, tool in toolFrames do
 		tool.Parent = toolsContainer
 		tool.LayoutOrder = i

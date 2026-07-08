@@ -2,13 +2,10 @@
 	Input-sinking overlay used to provide contrast behind modals.
 ]]
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Modules = ReplicatedStorage:WaitForChild("Modules")
-local Client = Modules:WaitForChild("Client")
-local UI = Client:WaitForChild("UI")
-
-local Utils = require(Modules:WaitForChild("Utils"))
-local StyleConsts = require(UI:WaitForChild("StyleConsts"))
+local UI = script.Parent.Parent
+local Style = UI:WaitForChild("Style")
+local StyleConsts = require(Style:WaitForChild("StyleConsts"))
+local StyleUtils = require(Style:WaitForChild("StyleUtils"))
 
 local Overlay = {}
 
@@ -18,7 +15,7 @@ function Overlay.createComponentFrame()
 	overlay.Text = ""
 	overlay.Name = "Overlay"
 	-- Most styling (including ZIndex) is done via StyleSheets -- see UI/Style.lua
-	Utils.AddStyleTag(overlay, StyleConsts.tags.Overlay)
+	StyleUtils.AddStyleTag(overlay, StyleConsts.tags.Overlay)
 
 	return overlay
 end
