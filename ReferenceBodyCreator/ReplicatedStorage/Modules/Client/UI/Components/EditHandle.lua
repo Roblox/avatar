@@ -4,14 +4,13 @@
 	tool or component invoking this UI.
 ]]
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Modules = ReplicatedStorage:WaitForChild("Modules")
-local Client = Modules:WaitForChild("Client")
-local UI = Client:WaitForChild("UI")
-local Components = UI:WaitForChild("Components")
+local UI = script.Parent.Parent
 
-local Utils = require(Modules:WaitForChild("Utils"))
-local StyleConsts = require(UI:WaitForChild("StyleConsts"))
+local Style = UI:WaitForChild("Style")
+local StyleConsts = require(Style:WaitForChild("StyleConsts"))
+local StyleUtils = require(Style:WaitForChild("StyleUtils"))
+
+local Components = UI:WaitForChild("Components")
 local IconButton = require(Components:WaitForChild("IconButton"))
 
 local EditHandle = {}
@@ -28,17 +27,17 @@ function EditHandle.new()
 	self.moveHandle = Instance.new("TextButton")
 	self.moveHandle.Name = "MoveHandle"
 	self.moveHandle.Text = ""
-	Utils.AddStyleTag(self.moveHandle, StyleConsts.tags.MainHandle)
+	StyleUtils.AddStyleTag(self.moveHandle, StyleConsts.tags.MainHandle)
 
 	self.rotateHandle = IconButton.createComponentFrame(StyleConsts.icons.Rotate)
 	self.rotateHandle.Name = "RotateHandle"
 	self.rotateHandle.Parent = self.moveHandle
-	Utils.AddStyleTag(self.rotateHandle, StyleConsts.tags.SmallHandle)
+	StyleUtils.AddStyleTag(self.rotateHandle, StyleConsts.tags.SmallHandle)
 
 	self.scaleHandle = IconButton.createComponentFrame(StyleConsts.icons.Scale)
 	self.scaleHandle.Name = "ScaleHandle"
 	self.scaleHandle.Parent = self.moveHandle
-	Utils.AddStyleTag(self.scaleHandle, StyleConsts.tags.SmallHandle)
+	StyleUtils.AddStyleTag(self.scaleHandle, StyleConsts.tags.SmallHandle)
 
 	return self
 end

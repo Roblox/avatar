@@ -31,12 +31,14 @@ local KitbashPieces = ReplicatedStorage:WaitForChild("KitbashPieces")
 local Modules = ReplicatedStorage:WaitForChild("Modules")
 local MeshManipulation = Modules:WaitForChild("MeshManipulation")
 local MeshUtils = require(MeshManipulation:WaitForChild("MeshUtils"))
-local Utils = require(Modules:WaitForChild("Utils"))
 
 local Client = Modules:WaitForChild("Client")
 local UI = Client:WaitForChild("UI")
-local StyleConsts = require(UI:WaitForChild("StyleConsts"))
+local Style = UI:WaitForChild("Style")
+local StyleConsts = require(Style:WaitForChild("StyleConsts"))
 local styleTokens = StyleConsts.styleTokens
+
+local InputUtils = require(Client:WaitForChild("InputUtils"))
 
 local Components = UI:WaitForChild("Components")
 local EditHandle = require(Components:WaitForChild("EditHandle"))
@@ -341,10 +343,7 @@ function KitbashTool:SetupHandles()
 	local scaleHandle = self.UIHandles.scaleHandle
 
 	local moveHandleInputBegan = moveHandle.InputBegan:Connect(function(input)
-		if
-			input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch
-		then
+		if InputUtils.isValidSelectingInput(input) then
 			if self.isRotating or self.isScaling or not self.inputManager:TryGrabLock(self) then
 				return
 			end
@@ -360,21 +359,18 @@ function KitbashTool:SetupHandles()
 	table.insert(self.connections, moveHandleInputBegan)
 
 	local inputChanged = UserInputService.InputChanged:Connect(function(input)
-		if self.isDragging and Utils.isValidDraggingInput(input) then
+		if self.isDragging and InputUtils.isValidDraggingInput(input) then
 			self:DragPiece(input)
-		elseif self.isRotating and Utils.isValidDraggingInput(input) then
+		elseif self.isRotating and InputUtils.isValidDraggingInput(input) then
 			self:RotatePiece(input)
-		elseif self.isScaling and Utils.isValidDraggingInput(input) then
+		elseif self.isScaling and InputUtils.isValidDraggingInput(input) then
 			self:ScalePiece(input)
 		end
 	end)
 	table.insert(self.connections, inputChanged)
 
 	local inputEnded = UserInputService.InputEnded:Connect(function(input)
-		if
-			input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch
-		then
+		if InputUtils.isValidSelectingInput(input) then
 			if self.isDragging then
 				self.isDragging = false
 				self:MergeCurrentPiece()
@@ -390,10 +386,7 @@ function KitbashTool:SetupHandles()
 	table.insert(self.connections, inputEnded)
 
 	local rotateHandleInputBegan = rotateHandle.InputBegan:Connect(function(input)
-		if
-			input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch
-		then
+		if InputUtils.isValidSelectingInput(input) then
 			if self.isDragging or self.isScaling then
 				return
 			end
@@ -412,10 +405,7 @@ function KitbashTool:SetupHandles()
 	table.insert(self.connections, rotateHandleInputBegan)
 
 	local scaleHandleInputBegan = scaleHandle.InputBegan:Connect(function(input)
-		if
-			input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch
-		then
+		if InputUtils.isValidSelectingInput(input) then
 			if self.isDragging or self.isRotating then
 				return
 			end
@@ -430,7 +420,9 @@ function KitbashTool:SetupHandles()
 			end
 
 			self.isScaling = true
-			self.mouseDownPos = Vector2.new(input.Position.X, input.Position.Y)
+
+			local inputPosition = InputUtils.getInputPosition(input)
+			self.mouseDownPos = Vector2.new(inputPosition.X, inputPosition.Y)
 		end
 	end)
 	table.insert(self.connections, scaleHandleInputBegan)
@@ -602,7 +594,8 @@ function KitbashTool:DragPiece(input)
 		return
 	end
 
-	local ray = workspace.CurrentCamera:ScreenPointToRay(input.Position.X, input.Position.Y, 1)
+	local inputPosition = InputUtils.getInputPosition(input)
+	local ray = workspace.CurrentCamera:ScreenPointToRay(inputPosition.X, inputPosition.Y, 1)
 
 	local meshInfo = self.modelInfo:GetMeshInfo()
 	local raycastResult = MeshUtils.RaycastAll(ray, meshInfo:GetEditableMeshMap(), meshInfo:GetScaleFactorMap())
@@ -639,7 +632,8 @@ function KitbashTool:RotatePiece(input)
 	local centerScreenPos = camera:WorldToScreenPoint(pieceData.positionMarker.Position)
 	local centerPos = Vector2.new(centerScreenPos.X, centerScreenPos.Y)
 
-	local mousePos = Vector2.new(input.Position.X, input.Position.Y)
+	local inputPosition = InputUtils.getInputPosition(input)
+	local mousePos = Vector2.new(inputPosition.X, inputPosition.Y)
 
 	local deltaPos = mousePos - centerPos
 	local angle = math.deg(math.atan2(deltaPos.Y, deltaPos.X))
@@ -652,19 +646,27 @@ function KitbashTool:RotatePiece(input)
 end
 
 function KitbashTool:ScalePiece(input)
+	local LEFT_POSITION_MIN_ANGLE = 45
+	local LEFT_POSITION_MAX_ANGLE = 225
+
 	local pieceData = self.placedPieces[self.currentlySelectedPiece]
 	if not pieceData then
 		return
 	end
 
-	local currentMousePos = Vector2.new(input.Position.X, input.Position.Y)
+	local inputPosition = InputUtils.getInputPosition(input)
+	local currentMousePos = Vector2.new(inputPosition.X, inputPosition.Y)
 	if not self.mouseDownPos then
 		self.mouseDownPos = currentMousePos
 		return
 	end
 
 	local mouseMovement = currentMousePos - self.mouseDownPos
-	local scaleChange = mouseMovement.X * 0.01
+	local scaleChange = mouseMovement.X * Constants.SCALE_DRAG_SENSITIVITY
+	if pieceData.rotation < LEFT_POSITION_MAX_ANGLE and pieceData.rotation >= LEFT_POSITION_MIN_ANGLE then
+		-- Scale handle is on the left side; invert scaling direction
+		scaleChange *= -1
+	end
 	pieceData.scale = math.clamp(pieceData.scale + scaleChange, pieceData.minScale, pieceData.maxScale)
 	self.mouseDownPos = currentMousePos
 

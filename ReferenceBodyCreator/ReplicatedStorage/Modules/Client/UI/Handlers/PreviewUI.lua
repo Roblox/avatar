@@ -3,23 +3,25 @@
 	avatar in the avatar preview feature.
 ]]
 
+local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
 local Modules = ReplicatedStorage:WaitForChild("Modules")
-local Client = Modules:WaitForChild("Client")
-
-local UI = Client:WaitForChild("UI")
-local StyleConsts = require(UI:WaitForChild("StyleConsts"))
-local Components = UI:WaitForChild("Components")
-local Utils = require(Modules:WaitForChild("Utils"))
-
 local Config = Modules:WaitForChild("Config")
 local Constants = require(Config:WaitForChild("Constants"))
 
-local SegmentedControl = require(Components:WaitForChild("SegmentedControl"))
-
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local UI = script.Parent.Parent
+
+local Style = UI:WaitForChild("Style")
+local StyleConsts = require(Style:WaitForChild("StyleConsts"))
+local StyleUtils = require(Style:WaitForChild("StyleUtils"))
+
+local Components = UI:WaitForChild("Components")
+local SegmentedControl = require(Components:WaitForChild("SegmentedControl"))
 
 local PreviewUI = {}
 PreviewUI.__index = PreviewUI
@@ -40,7 +42,11 @@ function PreviewUI.new(baseUI, manager, previewTool)
 	self.screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 	self.screenGui.DisplayOrder = 5
 	self.screenGui.ResetOnSpawn = false
-	self.screenGui.ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets
+	if GuiService:IsTenFootInterface() then
+		self.screenGui.ScreenInsets = Enum.ScreenInsets.None
+	else
+		self.screenGui.ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets
+	end
 	self.screenGui.Parent = PlayerGui
 
 	self.style:LinkGui(self.screenGui)
@@ -48,7 +54,7 @@ function PreviewUI.new(baseUI, manager, previewTool)
 	-- Preview UI parent frame
 	self.frame = Instance.new("Frame")
 	self.frame.Parent = self.screenGui
-	Utils.AddStyleTag(self.frame, StyleConsts.tags.PreviewUIParent)
+	StyleUtils.AddStyleTag(self.frame, StyleConsts.tags.PreviewUIParent)
 
 	-- Create switcher
 	self.switcher = SegmentedControl.createComponentFrame({
@@ -68,7 +74,7 @@ function PreviewUI.new(baseUI, manager, previewTool)
 		},
 	})
 	self.switcher.Parent = self.frame
-	Utils.AddStyleTag(self.switcher, StyleConsts.tags.AvatarPreviewSwitcher)
+	StyleUtils.AddStyleTag(self.switcher, StyleConsts.tags.AvatarPreviewSwitcher)
 
 	-- Track currently selected previewer
 	self.currentSelection = 1

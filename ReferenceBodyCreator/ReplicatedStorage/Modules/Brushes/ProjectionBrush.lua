@@ -1,3 +1,4 @@
+local AssetService = game:GetService("AssetService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")
@@ -15,17 +16,22 @@ local ImageEditActions = require(TextureManipulation:WaitForChild("ImageEditActi
 local Brushes = Modules:WaitForChild("Brushes")
 local BrushInfo = require(Brushes:WaitForChild("BrushInfo"))
 
+local Config = Modules:WaitForChild("Config")
+local Constants = require(Config:WaitForChild("Constants"))
+
 local ProjectionBrush = {}
 ProjectionBrush.__index = ProjectionBrush
 
 -- Bezier brush constantly redraws the last N points on the painted curve as the user moves the paintbrush.
 -- This allows us to have smooth curves that also stick to the tip of the brush.
-function ProjectionBrush.new(targetEditableImage, textureInfo: TextureInfo.TextureInfoClass)
+function ProjectionBrush.new(targetEditableImage, textureInfo: TextureInfo.TextureInfoClass, pbrMaps)
 	local self = {}
 	setmetatable(self, ProjectionBrush)
 
 	self.penSize = 1
 	self.penColor = Color3.new()
+	self.penTransparency = 0
+	self.isReflectiveMode = false
 
 	self.colorBlendType = Enum.ImageCombineType.BlendSourceOver
 	self.alphaBlendType = Enum.ImageAlphaType.Default
@@ -35,6 +41,9 @@ function ProjectionBrush.new(targetEditableImage, textureInfo: TextureInfo.Textu
 	self.textureInfo = textureInfo
 
 	self.targetEditableImage = targetEditableImage
+	self.roughnessMap = pbrMaps.roughnessMap
+	self.metalnessMap = pbrMaps.metalnessMap
+	self.normalMap = pbrMaps.normalMap
 
 	self.penDown = false
 
@@ -43,6 +52,8 @@ function ProjectionBrush.new(targetEditableImage, textureInfo: TextureInfo.Textu
 
 	self.commitBrushStrokeCallback = nil
 
+	self.currentState = nil -- whether the brush is in painting or erasing state
+
 	return self
 end
 
@@ -50,11 +61,17 @@ function ProjectionBrush:SetColor(newColor)
 	self.penColor = newColor
 end
 
+function ProjectionBrush:SetTransparency(newTransparency)
+	self.penTransparency = newTransparency
+end
+
+function ProjectionBrush:SetIsReflective(isReflectiveMode)
+	self.isReflectiveMode = isReflectiveMode
+end
+
 function ProjectionBrush:SetSize(newSize)
 	self.penSize = newSize * 0.01
 end
-
-function ProjectionBrush:SetTransparency(newTransparency) end
 
 function ProjectionBrush:SetCurrentMeshPart(meshPart: MeshPart)
 	self.currentMeshPart = meshPart
@@ -70,6 +87,10 @@ end
 
 function ProjectionBrush:SetAllMeshPart(allMeshPart)
 	self.allMeshPart = allMeshPart
+end
+
+function ProjectionBrush:SetState(state)
+	self.currentState = state
 end
 
 function ProjectionBrush:GetRequireLocalExecute()
@@ -90,9 +111,17 @@ function ProjectionBrush:DoDraw(drawInfo: BrushInfo.DrawInfo)
 	local sourceAlpha = self.alphaBlendType == Enum.ImageAlphaType.Default and 1.0 or 0.0
 	local targetAlpha = self.alphaBlendType == Enum.ImageAlphaType.Default and 0.0 or 1.0
 
-
 	local projectionBrushCircleTexture, projectionBrushLineTexture, circleBrushConfig, lineBrushConfig
 	= TextureUtils.CreateAndSetupProjectionBrushTexturesAndConfigs(sourceAlpha, targetAlpha, self.penColor, self.colorBlendType, self.alphaBlendType)
+
+	local isPainting = self.currentState == Constants.STATE_PAINTING
+	local pbrInfo, pbrBrushTextures = TextureUtils.GeneratePBRInfo(
+		not isPainting,
+		self.isReflectiveMode,
+		self.roughnessMap,
+		self.metalnessMap,
+		self.normalMap
+	)
 
 	local cameraCFrame = drawInfo.cameraCFrame
 	local cameraDirection = cameraCFrame.LookVector
@@ -101,6 +130,7 @@ function ProjectionBrush:DoDraw(drawInfo: BrushInfo.DrawInfo)
 
 	local pbResult = TextureUtils.GenerateProjectionBrushPoints(self.lastCastedPoint, castedPoint, cameraCFrame, scaledBrushSize)
 
+	local imageToDrawOn = if isPainting then self.intermediateEditableImage else self.targetEditableImage
 	for currMeshPart, currEditableMesh in pairs(self.allMeshPart) do
 		local collisionTest = Utils.TestOBBCollision(currMeshPart, pbResult.projectorCFrame, pbResult.projectorBrushSize)
 		if collisionTest then
@@ -115,8 +145,21 @@ function ProjectionBrush:DoDraw(drawInfo: BrushInfo.DrawInfo)
 				pbResult.castedUp,
 				circleBrushConfig,
 				lineBrushConfig,
-				self.targetEditableImage)
+				imageToDrawOn,
+				pbrInfo)
 		end
+	end
+
+	-- In order to paint with transparency, we paint to an intermediate EI which we then apply the
+	-- desired alpha value before drawing it to our target EI. This way we get consistent transparency
+	-- across the stroke.
+	if isPainting then
+		local tempEditableImageBuffer =
+			self.intermediateEditableImage:ReadPixelsBuffer(Vector2.zero, self.intermediateEditableImage.Size)
+		TextureUtils.ApplyAlpha(self.intermediateEditableImage, 1 - self.penTransparency)
+		self.targetEditableImage:WritePixelsBuffer(Vector2.zero, self.targetEditableImage.Size, self.cachedTargetBuffer)
+		self.targetEditableImage:DrawImage(Vector2.zero, self.intermediateEditableImage, Enum.ImageCombineType.BlendSourceOver)
+		self.intermediateEditableImage:WritePixelsBuffer(Vector2.zero, self.intermediateEditableImage.Size, tempEditableImageBuffer)
 	end
 
 	self.lastCastedPoint = castedPoint
@@ -126,10 +169,26 @@ function ProjectionBrush:DoDraw(drawInfo: BrushInfo.DrawInfo)
 
 	projectionBrushLineTexture:Destroy()
 	projectionBrushCircleTexture:Destroy()
+
+	for _, pbrBrushTexture in pairs(pbrBrushTextures) do
+		pbrBrushTexture:Destroy()
+	end
 end
 
 function ProjectionBrush:PenDown(drawInfo: BrushInfo.DrawInfo)
 	self.penDown = true
+
+	-- Create an intermediate EI to paint brush strokes on so we can apply desired
+	-- transparency cleanly
+	self.intermediateEditableImage = AssetService:CreateEditableImage({
+		Size = self.targetEditableImage.Size
+	})
+
+	-- Store a buffer of the image before editing with this stroke so we can
+	-- re-apply the intermediate EI to the target without applying transparency multiple times
+	-- throughout the stroke
+	self.cachedTargetBuffer = self.targetEditableImage:ReadPixelsBuffer(Vector2.zero, self.targetEditableImage.Size)
+
 	self:DoDraw(drawInfo)
 end
 
@@ -154,17 +213,32 @@ function ProjectionBrush:PenUp()
 	self.penDown = false
 
 	self:CommitCurrentDrawing()
+
+	if self.intermediateEditableImage then
+		self.intermediateEditableImage:Destroy()
+		self.intermediateEditableImage = nil
+	end
+
+	self.cachedTargetBuffer = nil
+    self.lastCastedPoint = nil
 end
 
 function ProjectionBrush:CommitCurrentDrawing()
 	local projectionBrushActionMetadata: ImageEditActions.ProjectionBrushActionMetadata = {
 		referenceMeshPartName = self.currentMeshPart.Name,
 		brushColor = self.penColor,
-		brushSize= self.penSize,
+		brushSize = self.penSize,
 		colorBlendType = self.colorBlendType,
 		alphaBlendType = self.alphaBlendType,
 		cameraCFrame = self.drawCamCFrame,
 		drawPositions = self.drawPositions,
+		isReflectiveMode = self.isReflectiveMode,
+		brushTransparency = 1 - self.penTransparency,
+		intermediateEditableImageBuffer = self.intermediateEditableImage:ReadPixelsBuffer(
+			Vector2.zero,
+			self.intermediateEditableImage.Size
+		),
+		cachedTargetImageBuffer = self.cachedTargetBuffer,
 	}
 
 	self.drawPositions = {}

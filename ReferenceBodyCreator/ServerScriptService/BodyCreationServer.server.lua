@@ -26,12 +26,24 @@ local InitializeServerModelEvent = Remotes:WaitForChild("InitializeServerModelEv
 local SendActionToServerEvent = Remotes:WaitForChild("SendActionToServerEvent")
 local ResetPlayerModelServerEvent = Remotes:WaitForChild("ResetPlayerModelServer")
 local ResetCompleteEvent = Remotes:WaitForChild("ResetCompleteEvent")
-
+local GetCreationPriceFunction = Remotes:WaitForChild("GetCreationPriceFunction")
 
 local ACCESSORY_TO_AVATAR_ASSET_TYPE = {
 	[Enum.AccessoryType.TShirt] = Enum.AvatarAssetType.TShirtAccessory,
 	[Enum.AccessoryType.Hat] = Enum.AvatarAssetType.Hat,
-} 
+	[Enum.AccessoryType.Jacket] = Enum.AvatarAssetType.JacketAccessory,
+	[Enum.AccessoryType.Pants] = Enum.AvatarAssetType.PantsAccessory,
+	[Enum.AccessoryType.Shirt] = Enum.AvatarAssetType.ShirtAccessory,
+	[Enum.AccessoryType.DressSkirt] = Enum.AvatarAssetType.DressSkirtAccessory,
+	[Enum.AccessoryType.Sweater] = Enum.AvatarAssetType.SweaterAccessory,
+	[Enum.AccessoryType.Shorts] = Enum.AvatarAssetType.ShortsAccessory,
+	[Enum.AccessoryType.Back] = Enum.AvatarAssetType.BackAccessory,
+	[Enum.AccessoryType.Face] = Enum.AvatarAssetType.FaceAccessory,
+	[Enum.AccessoryType.Neck] = Enum.AvatarAssetType.NeckAccessory,
+	[Enum.AccessoryType.Waist] = Enum.AvatarAssetType.WaistAccessory,
+	[Enum.AccessoryType.Front] = Enum.AvatarAssetType.FrontAccessory,
+	[Enum.AccessoryType.Hair] = Enum.AvatarAssetType.HairAccessory,
+}
 
 local PlayerActionQueueMap = {}
 
@@ -132,8 +144,7 @@ local function ReportCreationResult(player, promptCreationEnum, promptResult, re
 			"Failed to upload item. Result: " .. tostring(promptResult) .. " | Error: " .. resultMessage
 		)
 
-		if promptResult ~= promptCreationEnum["PermissionDenied"] and
-			promptResult ~= promptCreationEnum["Timeout"] then
+		if promptResult ~= promptCreationEnum["PermissionDenied"] and promptResult ~= promptCreationEnum["Timeout"] then
 			task.spawn(function()
 				-- We throw an error here so that we can see this reported in the error dashboard for the place
 				-- Since the error is in a task.spawn, it won't stop this function from completing
@@ -157,7 +168,7 @@ local function PublishAvatarAsset(token, player, assetToUpload, avatarAssetType)
 	end
 end
 
-local function PublishAvatar(token,  player, humanoidDescription)
+local function PublishAvatar(token, player, humanoidDescription)
 	local complete, result, resultMessage = pcall(function()
 		return AvatarCreationService:PromptCreateAvatarAsync(token, player, humanoidDescription)
 	end)
@@ -190,7 +201,6 @@ local function PublishModel(player)
 
 	local assetToUpload, avatarAssetType, avatarAssetToken
 	for _, meshPart in modelToPublish:GetDescendants() do
-
 		if not meshPart:IsA("MeshPart") then
 			continue
 		end
@@ -211,12 +221,20 @@ local function PublishModel(player)
 				end
 			end
 			meshPart.Name = "Handle"
+		elseif meshPart.Name ~= "PrimaryPart" then
+			meshPart.TextureID = ""
 		end
 
 		-- Remove welds for layered accessories for publish
 		local weldConstraint = meshPart:FindFirstChildOfClass("WeldConstraint")
 		if weldConstraint then
 			weldConstraint:Destroy()
+		end
+
+		-- If surface appearance, remove mesh TextureContent for publish
+		local surfaceAppearance = meshPart:FindFirstChildOfClass("SurfaceAppearance")
+		if surfaceAppearance then
+			meshPart.TextureContent = Content.none
 		end
 	end
 
@@ -234,6 +252,10 @@ BuyRemoteEvent.OnServerEvent:Connect(function(player)
 end)
 
 ResetPlayerModelServerEvent.OnServerEvent:Connect(ResetPlayerModel)
+
+GetCreationPriceFunction.OnServerInvoke = function(player, token: string)
+	return Utils.getPriceForCreation(token)
+end
 
 local function OnPlayerRemoving(player)
 	ResetPlayerModel(player)

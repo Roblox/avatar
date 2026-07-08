@@ -5,30 +5,31 @@ local StarterGui = game:GetService("StarterGui")
 local Modules = ReplicatedStorage:WaitForChild("Modules")
 local Utils = require(Modules:WaitForChild("Utils"))
 
-local Client = Modules:WaitForChild("Client")
-local UI = Client:WaitForChild("UI")
-
-local EditingUI = require(UI:WaitForChild("EditingUI"))
-local ResetEditsModalUI = require(UI:WaitForChild("ResetEditsModalUI"))
-local AccessoryAdjustmentModalUI = require(UI:WaitForChild("AccessoryAdjustmentModalUI"))
-local TopBarUI = require(UI:WaitForChild("TopBarUI"))
-local PreviewUI = require(UI:WaitForChild("PreviewUI"))
-
-local Components = UI:WaitForChild("Components")
-local TextButton = require(Components:WaitForChild("TextButton"))
-
-local Style = require(UI:WaitForChild("Style"))
-local StyleConsts = require(UI:WaitForChild("StyleConsts"))
-
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local BuyRemoteEvent = Remotes:WaitForChild("OnPlayerClickedBuy")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
+local UI = script.Parent.Parent
+
+local Style = UI:WaitForChild("Style")
+local StyleSheet = require(Style:WaitForChild("StyleSheet"))
+local StyleConsts = require(Style:WaitForChild("StyleConsts"))
+local StyleUtils = require(Style:WaitForChild("StyleUtils"))
+
+local Handlers = UI:WaitForChild("Handlers")
+local EditingUI = require(Handlers.EditingUI)
+local ResetEditsModalUI = require(Handlers.ResetEditsModalUI)
+local AccessoryAdjustmentModalUI = require(Handlers.AccessoryAdjustmentModalUI)
+local TopBarUI = require(Handlers.TopBarUI)
+local PreviewUI = require(Handlers.PreviewUI)
+
+local Components = UI:WaitForChild("Components")
+local TextButton = require(Components:WaitForChild("TextButton"))
+
 local BaseUI = {}
 BaseUI.__index = BaseUI
-
 
 function BaseUI.new(manager, modelInfo, fabricTool, stickerTool, brushTool, kitbashTool, previewTool)
 	local self = {}
@@ -58,10 +59,10 @@ function BaseUI.new(manager, modelInfo, fabricTool, stickerTool, brushTool, kitb
 	self.screenGui.ResetOnSpawn = false
 	self.screenGui.Parent = PlayerGui
 	self.screenGui.ScreenInsets = Enum.ScreenInsets.DeviceSafeInsets
-	Utils.AddStyleTag(self.screenGui, StyleConsts.tags.BaseUI)
+	StyleUtils.AddStyleTag(self.screenGui, StyleConsts.tags.BaseUI)
 
 	-- Create and link styleSheet
-	self.style = Style.new()
+	self.style = StyleSheet.new()
 	self.style:LinkGui(self.screenGui)
 
 	self.creationPrice = modelInfo:GetCreationPrice()
@@ -95,17 +96,17 @@ function BaseUI:CreateBuyButton()
 	self.buyButton.Name = "BuyButton"
 
 	self.buyButton.Parent = self.screenGui
-	Utils.AddStyleTag(self.buyButton, StyleConsts.tags.BuyButton)
-	Utils.AddStyleTag(self.buyButton, StyleConsts.tags.EmphasisButton)
+	StyleUtils.AddStyleTag(self.buyButton, StyleConsts.tags.BuyButton)
+	StyleUtils.AddStyleTag(self.buyButton, StyleConsts.tags.EmphasisButton)
 end
 
 function BaseUI:HideCoreUIBehindPanel()
-	Utils.AddStyleTag(self.buyButton, StyleConsts.tags.CoreUIWithOpenPanel)
+	StyleUtils.AddStyleTag(self.buyButton, StyleConsts.tags.CoreUIWithOpenPanel)
 	self.TopBarUI:HideBehindPanel()
 end
 
 function BaseUI:UnhideCoreUIBehindPanel()
-	Utils.RemoveStyleTag(self.buyButton, StyleConsts.tags.CoreUIWithOpenPanel)
+	StyleUtils.RemoveStyleTag(self.buyButton, StyleConsts.tags.CoreUIWithOpenPanel)
 	self.TopBarUI:UnhideBehindPanel()
 end
 

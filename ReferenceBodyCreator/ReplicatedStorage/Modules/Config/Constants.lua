@@ -1,11 +1,12 @@
 local Constants = {}
 
-Constants.MOBILE_WIDTH_CUTOFF = 1024
-
 Constants.EDIT_MODE_NONE = 0
 Constants.EDIT_MODE_MESH = 1
 Constants.EDIT_MODE_PAINT = 2
 Constants.EDIT_MODE_CHOOSING_PART = 3
+
+Constants.STATE_PAINTING = 1
+Constants.STATE_ERASING = 2
 
 -- Max Sticker Layers for the whole model
 Constants.MAX_STICKER_LAYERS = 3
@@ -13,8 +14,13 @@ Constants.MAX_STICKER_LAYERS = 3
 Constants.MAX_BRUSH_SIZE = 50
 Constants.MIN_BRUSH_SIZE = 1.5
 
+Constants.SCALE_DRAG_SENSITIVITY = 0.02
+
 Constants.MIN_STICKER_PADDING = 0
 Constants.MAX_STICKER_PADDING = 100
+
+Constants.DEFAULT_TILED_STICKER_SCALE = 0.5
+Constants.ACCESSORY_STICKER_SCALE = 0.5
 
 Constants.WIDGET_TYPE_SPHERE = "Sphere"
 Constants.WIDGET_TYPE_CYLINDER = "Cylinder"
@@ -26,9 +32,11 @@ Constants.CONTROL_TYPE_LINE = "Line"
 Constants.CONTROL_TYPE_PLANE = "Plane"
 
 Constants.BRUSH_LAYER = "BrushLayer"
+Constants.FABRIC_FILL_LAYER = "FabricFillLayer"
 Constants.STICKER_LAYER_PREFIX = "StickerLayer"
 
 Constants.FAILED_TO_CREATE_EI_MSG = "Failed to create editable image."
+Constants.FIX_MESH_IMAGE_SETTINGS_MSG = "Go to the Security Tab in Game Settings to enable this API."
 
 Constants.TEXTURE_RESOLUTION_STEPS = {
 	Vector2.new(1024, 1024),
@@ -41,6 +49,18 @@ Constants.DEFAULT_KITBASH_MIN_SCALE = 0.5
 Constants.DEFAULT_KITBASH_MAX_SCALE = 2
 Constants.ATLAS_GRID_SIZE = 2
 Constants.ATLAS_MAX_KITBASH_PIECES = (Constants.ATLAS_GRID_SIZE * Constants.ATLAS_GRID_SIZE) - 1
+
+-- Single logical metalness/roughness/normal cell before optional 2×2 atlas expansion (accessories).
+Constants.PBR_MAP_CELL_SIZE = Vector2.new(256, 256)
+
+-- Default packed PBR colors for new editable images (non-metallic, fully rough, flat normal).
+Constants.PBR_DEFAULT_METAL_COLOR = Color3.fromRGB(0, 0, 0)
+Constants.PBR_DEFAULT_ROUGH_COLOR = Color3.fromRGB(255, 255, 255)
+Constants.PBR_DEFAULT_NORMAL_COLOR = Color3.fromRGB(127, 127, 255)
+
+-- Packed colors when applying fully reflective / metallic + smooth roughness to a region.
+Constants.PBR_REFLECTIVE_METAL_COLOR = Color3.fromRGB(255, 255, 255)
+Constants.PBR_REFLECTIVE_ROUGH_COLOR = Color3.fromRGB(0, 0, 0)
 
 -- Define UV offsets based on the atlas we've created for kitbashing
 local function GenerateAtlasSlots(gridSize)
@@ -72,12 +92,6 @@ Constants.ATLAS_SLOTS = GenerateAtlasSlots(Constants.ATLAS_GRID_SIZE)
 Constants.CREATION_TYPES = {
 	Body = "Body",
 	Accessory = "Accessory",
-}
-
-Constants.DefaultColorPickerColor = {
-	h = 0,
-	s = 1,
-	v = 1,
 }
 
 -- Unified token map per universe.

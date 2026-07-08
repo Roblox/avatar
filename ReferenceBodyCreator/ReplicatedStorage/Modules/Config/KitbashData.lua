@@ -1,5 +1,12 @@
 local KitbashData = {}
 
+export type KitbashData = {
+	name: string,
+	thumbnail: string,
+	minScale: number?,
+	maxScale: number?,
+}
+
 KitbashData.pieces = {
 	{
 		name = "GooglyEye",

@@ -34,6 +34,9 @@ function LinearBrush.new(targetEditableImage, textureInfo: TextureInfo.TextureIn
 	self.drawPositions = {}
 	self.lastPenPosition = nil
 
+	self.isReflectiveMode = false
+	self.currentState = nil -- whether the brush is in painting or erasing state
+
 	return self
 end
 

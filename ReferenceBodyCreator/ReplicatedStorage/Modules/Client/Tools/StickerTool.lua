@@ -17,8 +17,11 @@ local Utils = require(Modules:WaitForChild("Utils"))
 
 local Client = Modules:WaitForChild("Client")
 local UI = Client:WaitForChild("UI")
-local StyleConsts = require(UI:WaitForChild("StyleConsts"))
+local Style = UI:WaitForChild("Style")
+local StyleConsts = require(Style:WaitForChild("StyleConsts"))
 local styleTokens = StyleConsts.styleTokens
+
+local InputUtils = require(Client:WaitForChild("InputUtils"))
 
 local Config = Modules:WaitForChild("Config")
 local Constants = require(Config:WaitForChild("Constants"))
@@ -70,13 +73,15 @@ function StickerTool.new(modelInfo: ModelInfo.ModelInfoClass, inputManager)
 	setmetatable(self, StickerTool)
 
 	self.modelInfo = modelInfo
+	self.isAccessory = self.modelInfo:GetCreationType() == Constants.CREATION_TYPES.Accessory
+	self.enableKitbashing = modelInfo:GetKitbashingEnabled()
 	self.inputManager = inputManager
 
 	self.currentlySelectedSticker = 0
 
-	self.isDraggingSticker = false
-	self.isRotatingSticker = false
-	self.isScalingSticker = false
+	self.isDragging = false
+	self.isRotating = false
+	self.isScaling = false
 	self.lastStickerAction = nil
 
 	self.selectedRegionName = nil
@@ -108,6 +113,17 @@ function StickerTool.new(modelInfo: ModelInfo.ModelInfoClass, inputManager)
 	return self
 end
 
+function StickerTool:SelectSticker(index: number)
+	self.currentlySelectedSticker = index
+
+	-- Cache the editable image of the sticker texture so it's ready for redraw
+	local textureInfo: TextureInfo.TextureInfoClass = self.modelInfo:GetTextureInfo()
+	local textureId = self.appliedStickers[index].textureId
+	textureInfo:GetOrCreateEditableImageByTextureId(textureId)
+
+	self:RefreshHandleUI()
+end
+
 local function GetRayPlaneIntersection(rayStart, rayDirection, planePoint, planeNormal)
 	local denom = planeNormal:Dot(rayDirection)
 	if math.abs(denom) > 0.0001 then -- your favorite epsilon
@@ -135,8 +151,7 @@ function StickerTool:RefreshMarkerPosition(stickerData: StickerData?)
 
 		local directionIndicator = stickerData.positionMarker:FindFirstChild("StickerDirectionMarker")
 		if directionIndicator then
-			directionIndicator.Position =
-				stickerData.positionMarker.Position + stickerData.projectionDirection
+			directionIndicator.Position = stickerData.positionMarker.Position + stickerData.projectionDirection
 		end
 
 		self:RefreshHandleUI()
@@ -182,153 +197,51 @@ function StickerTool:SetupHandles()
 	local scaleHandle = self.UIHandles.scaleHandle
 
 	local moveHandleInputBegan = moveHandle.InputBegan:Connect(function(input)
-		if
-			input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch
-		then
-			if self.isRotatingSticker or self.isScalingSticker then
-				return
-			end
-			if self.inputManager:TryGrabLock(self) == false then
+		if InputUtils.isValidSelectingInput(input) then
+			if self.isRotating or self.isScaling or not self.inputManager:TryGrabLock(self) then
 				return
 			end
 
-			self.isDraggingSticker = true
+			self.isDragging = true
 		end
 	end)
 	table.insert(self.connections, moveHandleInputBegan)
 
 	local inputChanged = UserInputService.InputChanged:Connect(function(input)
-		if
-			(input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch)
-			and self.isDraggingSticker
-		then
-			-- Raycast to mouse pos and set sticker location
-			local ray = workspace.CurrentCamera:ScreenPointToRay(input.Position.X, input.Position.Y, 1)
-
-			local selectedSticker: StickerData? = self.appliedStickers[self.currentlySelectedSticker]
-			if not selectedSticker then
-				return
-			end
-
-			local meshPart = selectedSticker.targetMeshPart
-
-			local meshInfo: MeshInfo.MeshInfoClass = self.modelInfo:GetMeshInfo()
-
-			local raycastResult: MeshUtils.EditableMeshRaycastResult? =
-				MeshUtils.RaycastAll(ray, meshInfo:GetEditableMeshMap(), meshInfo:GetScaleFactorMap())
-			if raycastResult == nil then
-				-- This can happen while dragging a sticker if the mouse is no longer over a meshpart
-				return
-			end
-
-			if raycastResult.meshPart ~= meshPart then
-				self:MoveStickerBetweenParts(selectedSticker, raycastResult.meshPart)
-			end
-
-			-- Calculate marker pos and normal
-			selectedSticker.positionMarker.CFrame = MeshUtils.EditableMeshRaycastToCFrame(
-				raycastResult.editableMesh,
-				raycastResult.meshPart,
-				raycastResult.point,
-				raycastResult.triangleId,
-				raycastResult.scaleFactor
-			)
-			selectedSticker.positionMarkerOffset = meshPart.CFrame:ToObjectSpace(selectedSticker.positionMarker.CFrame)
-
-			local directionIndicator = selectedSticker.positionMarker:FindFirstChild("StickerDirectionMarker")
-			if directionIndicator then
-				directionIndicator.Position =
-					selectedSticker.positionMarker.Position + selectedSticker.projectionDirection
-			end
-
-			local uvCoord = MeshUtils.GetTextureCoordinate(
-				raycastResult.editableMesh,
-				raycastResult.triangleId,
-				raycastResult.barycentricCoordinate
-			)
-
-			local textureInfo: TextureInfo.TextureInfoClass = self.modelInfo:GetTextureInfo()
-
-			local textureCoord = uvCoord * textureInfo:GetTextureSize(meshPart)
-			selectedSticker.texturePosition = textureCoord
-			self:RefreshHandleUI()
-			self:RedrawSticker(selectedSticker, false)
+		if not InputUtils.isValidDraggingInput(input) then
+			return
+		end
+		if self.isDragging then
+			self:DragSticker(input)
+		elseif self.isRotating then
+			self:RotateSticker(input)
+		elseif self.isScaling then
+			self:ScaleSticker(input)
 		end
 	end)
 	table.insert(self.connections, inputChanged)
 
 	local rotateHandleInputBeganConnection = rotateHandle.InputBegan:Connect(function(input)
-		if
-			input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch
-		then
-			if self.isDraggingSticker or self.isScalingSticker then
-				return
-			end
-			if self.inputManager:TryGrabLock(self) == false then
+		if InputUtils.isValidSelectingInput(input) then
+			if self.isDragging or self.isScaling or not self.inputManager:TryGrabLock(self) then
 				return
 			end
 
-			self.isRotatingSticker = true
+			self.isRotating = true
 		end
 	end)
 	table.insert(self.connections, rotateHandleInputBeganConnection)
 
-	local rotateInputChangedConnection = UserInputService.InputChanged:Connect(function(input)
-		if
-			(input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch)
-			and self.isRotatingSticker
-		then
-			local selectedSticker: StickerData? = self.appliedStickers[self.currentlySelectedSticker]
-			if not selectedSticker then
-				return
-			end
-
-			-- Project mouse onto plane
-			local rayOrigin = workspace.CurrentCamera.CFrame.Position
-			local ray = workspace.CurrentCamera:ScreenPointToRay(input.Position.X, input.Position.Y, 1)
-			local planePoint = selectedSticker.positionMarker.Position
-			local planeNormal = selectedSticker.positionMarker.CFrame.LookVector
-			planeNormal = planeNormal.Unit
-			local _isIntersecting, intersection =
-				GetRayPlaneIntersection(rayOrigin, ray.Direction, planePoint, planeNormal)
-
-			local vectorDiff = intersection - planePoint
-			vectorDiff = vectorDiff.Unit
-			local upVector = RotateVectorAroundAxis(
-				selectedSticker.positionMarker.CFrame.UpVector,
-				selectedSticker.rotation,
-				planeNormal
-			)
-			local upDot = upVector:Dot(vectorDiff)
-			local cross = upVector:Cross(vectorDiff)
-
-			local angle = math.atan2(cross:Dot(planeNormal), upDot)
-
-			-- Account for difference between up vector and the rotation handle
-			angle = math.deg(angle) + (90 - styleTokens.RotateHandlePosDegrees)
-			selectedSticker.rotation = math.abs((selectedSticker.rotation + angle) % 360) * -1
-
-			self:RefreshHandleUI()
-			self:RedrawSticker(selectedSticker, false)
-		end
-	end)
-	table.insert(self.connections, rotateInputChangedConnection)
-
 	local inputChangedConnection = UserInputService.InputEnded:Connect(function(input)
-		if
-			input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch
-		then
-			if self.isRotatingSticker or self.isDraggingSticker or self.isScalingSticker then
+		if InputUtils.isValidSelectingInput(input) then
+			if self.isRotating or self.isDragging or self.isScaling then
 				if self.lastStickerAction ~= nil then
 					SendActionToServerEvent:FireServer(self.lastStickerAction)
 				end
 			end
-			self.isRotatingSticker = false
-			self.isDraggingSticker = false
-			self.isScalingSticker = false
+			self.isRotating = false
+			self.isDragging = false
+			self.isScaling = false
 			self.lastStickerAction = nil
 		end
 	end)
@@ -336,70 +249,148 @@ function StickerTool:SetupHandles()
 
 	-- When we drag a scale handle, resize the sticker
 	local scaleInputBeganConnection = scaleHandle.InputBegan:Connect(function(input)
-		if
-			input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch
-		then
-			if self.isRotatingSticker or self.isDraggingSticker then
-				return
-			end
-			if self.inputManager:TryGrabLock(self) == false then
+		if InputUtils.isValidSelectingInput(input) then
+			if self.isRotating or self.isDragging or not self.inputManager:TryGrabLock(self) then
 				return
 			end
 
-			self.isScalingSticker = true
-			self.mouseDownPos = input.Position
+			self.isScaling = true
+			self.mouseDownPos = InputUtils.getInputPosition(input)
 		end
 	end)
 	table.insert(self.connections, scaleInputBeganConnection)
 
-	local scaleInputChangedConnection = UserInputService.InputChanged:Connect(function(input)
-		if
-			(input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch)
-			and self.isScalingSticker
-		then
-			local selectedSticker: StickerData? = self.appliedStickers[self.currentlySelectedSticker]
-			if not selectedSticker then
-				return
-			end
-
-			-- Project mouse onto plane
-			local rayOrigin = workspace.CurrentCamera.CFrame.Position
-			local ray = workspace.CurrentCamera:ScreenPointToRay(input.Position.X, input.Position.Y, 1)
-			local planePoint = selectedSticker.positionMarker.Position
-			local planeNormal = selectedSticker.positionMarker.CFrame.LookVector
-			local isIntersecting, intersection =
-				GetRayPlaneIntersection(rayOrigin, ray.Direction, planePoint, planeNormal)
-			if isIntersecting then
-				-- Get distance from position marker to ray intersection and use that to decide sticker size
-				local vectorDiff = intersection - planePoint
-				local rightVector = RotateVectorAroundAxis(
-					selectedSticker.positionMarker.CFrame.RightVector,
-					selectedSticker.rotation,
-					planeNormal
-				)
-				local upVector = RotateVectorAroundAxis(
-					selectedSticker.positionMarker.CFrame.UpVector,
-					selectedSticker.rotation,
-					planeNormal
-				)
-				local rightProjection = vectorDiff:Dot(rightVector) * rightVector
-				local upProjection = vectorDiff:Dot(rightVector) * upVector
-				local scale = math.max(rightProjection.Magnitude, upProjection.Magnitude) / 0.3
-				scale = math.max(scale, 0.1) -- We need some minimum scale so that stickers don't tile infinitely (which causes a crash)
-				selectedSticker.scale = scale
-				self:RefreshHandleUI()
-				self:RedrawSticker(selectedSticker, false)
-			end
-		end
-	end)
-	table.insert(self.connections, scaleInputChangedConnection)
-
-	local cameraChangedConnection = workspace.CurrentCamera:GetPropertyChangedSignal("CFrame"):Connect(function()
+	local camera = workspace.CurrentCamera
+	local cameraChangedConnection = camera:GetPropertyChangedSignal("CFrame"):Connect(function()
 		self:RefreshHandleUI()
 	end)
 
 	table.insert(self.connections, cameraChangedConnection)
+end
+
+function StickerTool:DragSticker(input)
+	-- Raycast to mouse pos and set sticker location
+	local inputPosition = InputUtils.getInputPosition(input)
+	local camera = workspace.CurrentCamera
+	local ray = camera:ScreenPointToRay(inputPosition.X, inputPosition.Y, 1)
+
+	local selectedSticker: StickerData? = self.appliedStickers[self.currentlySelectedSticker]
+	if not selectedSticker then
+		return
+	end
+
+	local meshPart = selectedSticker.targetMeshPart
+
+	local meshInfo: MeshInfo.MeshInfoClass = self.modelInfo:GetMeshInfo()
+
+	local raycastResult: MeshUtils.EditableMeshRaycastResult? =
+		MeshUtils.RaycastAll(ray, meshInfo:GetEditableMeshMap(), meshInfo:GetScaleFactorMap())
+	if raycastResult == nil then
+		-- This can happen while dragging a sticker if the mouse is no longer over a meshpart
+		return
+	end
+
+	if raycastResult.meshPart ~= meshPart then
+		self:MoveStickerBetweenParts(selectedSticker, raycastResult.meshPart)
+	end
+
+	-- Calculate marker pos and normal
+	selectedSticker.positionMarker.CFrame = MeshUtils.EditableMeshRaycastToCFrame(
+		raycastResult.editableMesh,
+		raycastResult.meshPart,
+		raycastResult.point,
+		raycastResult.triangleId,
+		raycastResult.scaleFactor
+	)
+	selectedSticker.positionMarkerOffset = meshPart.CFrame:ToObjectSpace(selectedSticker.positionMarker.CFrame)
+
+	local directionIndicator = selectedSticker.positionMarker:FindFirstChild("StickerDirectionMarker")
+	if directionIndicator then
+		directionIndicator.Position = selectedSticker.positionMarker.Position + selectedSticker.projectionDirection
+	end
+
+	local uvCoord = MeshUtils.GetTextureCoordinate(
+		raycastResult.editableMesh,
+		raycastResult.triangleId,
+		raycastResult.barycentricCoordinate
+	)
+	if self.enableKitbashing then
+		-- Accommodate for the fact that kitbash atlas causes UVs to be halved
+		uvCoord *= Constants.ATLAS_GRID_SIZE
+	end
+
+	local textureInfo: TextureInfo.TextureInfoClass = self.modelInfo:GetTextureInfo()
+
+	local textureCoord = uvCoord * textureInfo:GetTextureSize(meshPart)
+	selectedSticker.texturePosition = textureCoord
+	self:RefreshHandleUI()
+	self:RedrawSticker(selectedSticker, false)
+end
+
+function StickerTool:RotateSticker(input)
+	local selectedSticker: StickerData? = self.appliedStickers[self.currentlySelectedSticker]
+	if not selectedSticker then
+		return
+	end
+
+	-- Project mouse onto plane
+	local camera = workspace.CurrentCamera
+	local rayOrigin = camera.CFrame.Position
+	local inputPosition = InputUtils.getInputPosition(input)
+	local ray = camera:ScreenPointToRay(inputPosition.X, inputPosition.Y, 1)
+	local planePoint = selectedSticker.positionMarker.Position
+	local planeNormal = selectedSticker.positionMarker.CFrame.LookVector
+	planeNormal = planeNormal.Unit
+	local isIntersecting, intersection = GetRayPlaneIntersection(rayOrigin, ray.Direction, planePoint, planeNormal)
+
+	if not isIntersecting then
+		warn("Sticker ray is not intersecting with plane for rotation.")
+		return
+	end
+
+	local vectorDiff = intersection - planePoint
+	vectorDiff = vectorDiff.Unit
+	local upVector =
+		RotateVectorAroundAxis(selectedSticker.positionMarker.CFrame.UpVector, selectedSticker.rotation, planeNormal)
+	local upDot = upVector:Dot(vectorDiff)
+	local cross = upVector:Cross(vectorDiff)
+
+	local angle = math.atan2(cross:Dot(planeNormal), upDot)
+
+	-- Account for difference between up vector and the rotation handle
+	angle = math.deg(angle) + (90 - styleTokens.RotateHandlePosDegrees)
+	selectedSticker.rotation = math.abs((selectedSticker.rotation + angle) % 360) * -1
+
+	self:RefreshHandleUI()
+	self:RedrawSticker(selectedSticker, false)
+end
+
+function StickerTool:ScaleSticker(input)
+	local LEFT_POSITION_MIN_ANGLE = -315
+	local LEFT_POSITION_MAX_ANGLE = -135
+
+	local selectedSticker: StickerData? = self.appliedStickers[self.currentlySelectedSticker]
+	if not selectedSticker then
+		return
+	end
+
+	local inputPosition = InputUtils.getInputPosition(input)
+	if not self.mouseDownPos then
+		self.mouseDownPos = inputPosition
+		return
+	end
+
+	local mouseMovement = inputPosition - self.mouseDownPos
+	local scaleChange = mouseMovement.X * Constants.SCALE_DRAG_SENSITIVITY
+	if selectedSticker.rotation < LEFT_POSITION_MAX_ANGLE and selectedSticker.rotation >= LEFT_POSITION_MIN_ANGLE then
+		-- Scale handle is on the left side; invert scaling direction
+		scaleChange *= -1
+	end
+	selectedSticker.scale = math.max(selectedSticker.scale + scaleChange, 0.1)
+	self.mouseDownPos = inputPosition
+
+	self:RefreshHandleUI()
+	self:RedrawSticker(selectedSticker, false)
 end
 
 function StickerTool:RefreshHandleUI()
@@ -407,13 +398,12 @@ function StickerTool:RefreshHandleUI()
 		self:SetupHandles()
 	end
 
-	local handleGui = PlayerGui:FindFirstChild(HANDLE_GUI_NAME)
 	if self.currentlySelectedSticker == 0 then
 		-- There's no sticker selected; we should hide all ui handles.
-		handleGui.Enabled = false
+		self.inputGui.Enabled = false
 		return
 	else
-		handleGui.Enabled = true
+		self.inputGui.Enabled = true
 	end
 
 	-- Reposition handles
@@ -503,8 +493,33 @@ local function CreatePositionMarker(newCFrame)
 	return marker
 end
 
+-- Allocate the lowest available sticker layer number
+-- Note that the layer number has nothing to do with the ordering of stickers
+-- when drawing them. It's just an identifier for each sticker.
+function StickerTool:AllocateLayer()
+	local usedSlots = {}
+	for _, stickerData in self.appliedStickers do
+		if stickerData.stickerLayerNumber then
+			usedSlots[stickerData.stickerLayerNumber] = true
+		end
+	end
+
+	for i = 1, Constants.MAX_STICKER_LAYERS do
+		if not usedSlots[i] then
+			return i
+		end
+	end
+
+	return nil
+end
+
 function StickerTool:ApplySticker(imageAssetId)
 	if self.stickerCounter >= Constants.MAX_STICKER_LAYERS then
+		return
+	end
+
+	local layerNumber = self:AllocateLayer()
+	if not layerNumber then
 		return
 	end
 
@@ -534,6 +549,10 @@ function StickerTool:ApplySticker(imageAssetId)
 	uvCoord = (baryCoord.x * editableMesh:GetUV(faceUVs[1]))
 		+ (baryCoord.y * editableMesh:GetUV(faceUVs[2]))
 		+ (baryCoord.z * editableMesh:GetUV(faceUVs[3]))
+	if self.enableKitbashing then
+		-- Accommodate for the fact that kitbash atlas causes UVs to be halved
+		uvCoord *= Constants.ATLAS_GRID_SIZE
+	end
 
 	local textureInfo: TextureInfo.TextureInfoClass = self.modelInfo:GetTextureInfo()
 
@@ -545,7 +564,7 @@ function StickerTool:ApplySticker(imageAssetId)
 
 		texturePosition = uvCoord * textureInfo:GetTextureSize(meshPart),
 		rotation = 0,
-		scale = 1,
+		scale = if self.isAccessory then Constants.ACCESSORY_STICKER_SCALE else 1,
 
 		isTiled = false,
 		tilePadding = 0,
@@ -555,7 +574,7 @@ function StickerTool:ApplySticker(imageAssetId)
 		positionMarker = marker,
 		positionMarkerOffset = meshPart.CFrame:ToObjectSpace(marker.CFrame),
 
-		stickerLayerNumber = 1 + self.stickerCounter,
+		stickerLayerNumber = layerNumber,
 	}
 
 	self.stickerCounter = self.stickerCounter + 1
@@ -708,9 +727,14 @@ function StickerTool:DeleteCurrentSticker()
 
 	table.remove(self.appliedStickers, self.currentlySelectedSticker)
 
-	self.currentlySelectedSticker = #self.appliedStickers
+	if self.currentlySelectedSticker == #self.appliedStickers + 1 then
+		self.currentlySelectedSticker = #self.appliedStickers
+	end
+
 	self.stickerCounter = self.stickerCounter - 1
 	self:RefreshHandleUI()
+
+	selectedSticker.positionMarker:Destroy()
 end
 
 -- Returns whether or not the current sticker is tiled after toggling.
@@ -758,7 +782,7 @@ end
 function StickerTool:Enable()
 	self.inputGui.Enabled = true
 	if #self.appliedStickers > 0 then
-		self.currentlySelectedSticker = #self.appliedStickers
+		self:SelectSticker(#self.appliedStickers)
 	end
 	self:RefreshHandleUI()
 end

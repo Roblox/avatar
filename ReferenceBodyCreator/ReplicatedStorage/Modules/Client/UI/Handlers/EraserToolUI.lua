@@ -2,13 +2,8 @@
 	Creates the UI used with the eraser tool.
 ]]
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Modules = ReplicatedStorage:WaitForChild("Modules")
-local Client = Modules:WaitForChild("Client")
-
-local UI = Client:WaitForChild("UI")
+local UI = script.Parent.Parent
 local Components = UI:WaitForChild("Components")
-
 local Slider = require(Components:WaitForChild("Slider"))
 local ToolFrame = require(Components:WaitForChild("ToolFrame"))
 local Panel = require(Components:WaitForChild("Panel"))
@@ -28,7 +23,7 @@ function EraserToolUI.new(
 
 	self.onSliderChangedCallback = onSliderChangedCallback
 
-	local slider = Slider.createComponentFrame(inputManager, defaultSliderVal, onSliderChangedCallback)
+	local slider = Slider.createComponentFrame(defaultSliderVal, onSliderChangedCallback)
 	local sliderTool = ToolFrame.createComponentFrame(slider, "Brush Size")
 
 	self.panel = Panel.createComponentFrame("Eraser", onClosePanelCallback, onDeleteCallback, { sliderTool })

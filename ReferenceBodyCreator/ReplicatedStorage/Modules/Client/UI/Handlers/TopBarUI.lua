@@ -3,23 +3,24 @@
 	Called in BaseUI, alongside other UIs used for editing.
 ]]
 
+local GuiService = game:GetService("GuiService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")
-local Client = Modules:WaitForChild("Client")
 local Config = Modules:WaitForChild("Config")
-local UI = Client:WaitForChild("UI")
-local Components = UI:WaitForChild("Components")
-local StyleConsts = require(UI:WaitForChild("StyleConsts"))
-local Utils = require(Modules:WaitForChild("Utils"))
-
 local ConfigConsts = require(Config:WaitForChild("Constants"))
-
-local LocalMenu = require(Components:WaitForChild("LocalMenu"))
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local UI = script.Parent.Parent
+local Style = UI:WaitForChild("Style")
+local StyleConsts = require(Style:WaitForChild("StyleConsts"))
+local StyleUtils = require(Style:WaitForChild("StyleUtils"))
+
+local Components = UI:WaitForChild("Components")
+local LocalMenu = require(Components:WaitForChild("LocalMenu"))
 
 local TopBarUI = {}
 TopBarUI.__index = TopBarUI
@@ -35,7 +36,11 @@ function TopBarUI.new(baseUI, manager)
 	local showAvatarPreview = manager.modelInfo:GetCreationType() == ConfigConsts.CREATION_TYPES.Accessory
 
 	self.screenGui = Instance.new("ScreenGui")
-	self.screenGui.ScreenInsets = Enum.ScreenInsets.TopbarSafeInsets
+	if GuiService:IsTenFootInterface() then
+		self.screenGui.ScreenInsets = Enum.ScreenInsets.None
+	else
+		self.screenGui.ScreenInsets = Enum.ScreenInsets.TopbarSafeInsets
+	end
 	self.screenGui.Name = "TopBarUI"
 	self.screenGui.Parent = PlayerGui
 	-- Render below other screenGuis
@@ -53,20 +58,20 @@ function TopBarUI.new(baseUI, manager)
 		baseUI.ResetEditsModalUI:Open()
 	end
 	local destroyButtonInfo = {
-		icon = StyleConsts.icons.ResetChanges,
+		iconId = StyleConsts.icons.ResetChanges,
 		callback = onDestroy,
 	}
-	table.insert(editorInfos, destroyButtonInfo)
+	table.insert(editorInfos, { destroyButtonInfo })
 
 	-- Exit Button
 	local onExit = function()
 		manager:Quit()
 	end
 	local exitButtonInfo = {
-		icon = StyleConsts.icons.ExitEditor,
+		iconId = StyleConsts.icons.ExitEditor,
 		callback = onExit,
 	}
-	table.insert(editorInfos, exitButtonInfo)
+	table.insert(editorInfos, { exitButtonInfo })
 
 	-- Avatar Preview Button and Preview Menu, if applicable
 	if showAvatarPreview then
@@ -74,10 +79,10 @@ function TopBarUI.new(baseUI, manager)
 			self:SwitchToAvatarPreview()
 		end
 		local previewButtonInfo = {
-			icon = StyleConsts.icons.AvatarPreview,
+			iconId = StyleConsts.icons.AvatarPreview,
 			callback = onPreview,
 		}
-		table.insert(editorInfos, 2, previewButtonInfo) -- Insert at second position
+		table.insert(editorInfos, 2, { previewButtonInfo }) -- Insert at second position
 
 		local modelName = manager.modelInfo:GetBlankName()
 
@@ -85,10 +90,10 @@ function TopBarUI.new(baseUI, manager)
 			self:SwitchToEditor()
 		end
 		local returnButtonInfo = {
-			icon = StyleConsts.editorIcons[modelName],
+			iconId = StyleConsts.editorIcons[modelName],
 			callback = onEditorReturn,
 		}
-		previewInfos = { returnButtonInfo, exitButtonInfo }
+		previewInfos = { { returnButtonInfo }, { exitButtonInfo } }
 	end
 
 	-- Create local menus
@@ -108,11 +113,11 @@ end
 function TopBarUI:HideBehindPanel()
 	-- Panels cannot be opened in preview mode, so we only need to worry about
 	-- the editor menu.
-	Utils.AddStyleTag(self.editorMenu, StyleConsts.tags.CoreUIWithOpenPanel)
+	StyleUtils.AddStyleTag(self.editorMenu, StyleConsts.tags.CoreUIWithOpenPanel)
 end
 
 function TopBarUI:UnhideBehindPanel()
-	Utils.RemoveStyleTag(self.editorMenu, StyleConsts.tags.CoreUIWithOpenPanel)
+	StyleUtils.RemoveStyleTag(self.editorMenu, StyleConsts.tags.CoreUIWithOpenPanel)
 end
 
 function TopBarUI:SwitchToEditor()

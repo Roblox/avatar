@@ -7,20 +7,16 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")
-
-local Client = Modules:WaitForChild("Client")
-local UI = Client:WaitForChild("UI")
-
-local Components = UI:WaitForChild("Components")
-
-local Overlay = require(Components:WaitForChild("Overlay"))
-local Modal = require(Components:WaitForChild("Modal"))
-
 local Config = Modules:WaitForChild("Config")
 local Constants = require(Config:WaitForChild("Constants"))
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local UI = script.Parent.Parent
+local Components = UI:WaitForChild("Components")
+local Overlay = require(Components:WaitForChild("Overlay"))
+local Modal = require(Components:WaitForChild("Modal"))
 
 local AccessoryAdjustmentModal = {}
 AccessoryAdjustmentModal.__index = AccessoryAdjustmentModal

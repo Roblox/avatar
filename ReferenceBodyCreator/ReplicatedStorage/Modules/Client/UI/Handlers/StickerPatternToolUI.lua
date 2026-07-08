@@ -6,26 +6,49 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Modules = ReplicatedStorage:WaitForChild("Modules")
-local Client = Modules:WaitForChild("Client")
-
 local Config = Modules:WaitForChild("Config")
 local Constants = require(Config:WaitForChild("Constants"))
+local StickerData = require(Config:WaitForChild("StickerData")) -- import for typechecking
 
-local UI = Client:WaitForChild("UI")
-local StyleConsts = require(UI:WaitForChild("StyleConsts"))
-local Utils = require(Modules:WaitForChild("Utils"))
+local UI = script.Parent.Parent
+
+local Style = UI:WaitForChild("Style")
+local StyleConsts = require(Style:WaitForChild("StyleConsts"))
+local StyleUtils = require(Style:WaitForChild("StyleUtils"))
 
 local Components = UI:WaitForChild("Components")
-
 local ProgressBar = require(Components:WaitForChild("ProgressBar"))
 local Panel = require(Components:WaitForChild("Panel"))
-local StickerGrid = require(Components:WaitForChild("StickerGrid"))
+local TileGrid = require(Components:WaitForChild("TileGrid"))
 local RegionPicker = require(Components:WaitForChild("RegionPicker"))
 local Slider = require(Components:WaitForChild("Slider"))
 local ToolFrame = require(Components:WaitForChild("ToolFrame"))
 
 local StickerPatternToolUI = {}
 StickerPatternToolUI.__index = StickerPatternToolUI
+
+function StickerPatternToolUI:createStickerGridComponent()
+	local tileInfos = {}
+
+	for _, sticker: StickerData.StickerData in pairs(self.stickerData) do
+		local onClickCallback = function()
+			self.stickerTool:ApplySticker(sticker.textureId)
+			self:UpdateProgress()
+			self.stickerTool:SetPatterned(true)
+		end
+
+		local info = {
+			iconId = sticker.textureId,
+			callback = onClickCallback,
+		}
+		table.insert(tileInfos, info)
+	end
+
+	local grid = TileGrid.createComponentFrame(tileInfos)
+	grid.Name = "StickerGrid"
+
+	return grid
+end
 
 function StickerPatternToolUI.new(
 	inputManager,
@@ -41,21 +64,18 @@ function StickerPatternToolUI.new(
 	local self = {}
 	setmetatable(self, StickerPatternToolUI)
 
+	self.stickerData = stickerData
 	self.stickerTool = stickerTool
 
 	self.stickerCounter = ProgressBar.new(Constants.COUNTER_STRINGS.Sticker, Constants.MAX_STICKER_LAYERS)
 	local stickerCounterFrame = self.stickerCounter.frame
 
-	local onAddSticker = function()
-		self:UpdateProgress()
-	end
-
 	local componentsList = { stickerCounterFrame }
 
 	local scrollingFrame = Instance.new("ScrollingFrame")
-	Utils.AddStyleTag(scrollingFrame, StyleConsts.tags.ScrollFrame)
+	StyleUtils.AddStyleTag(scrollingFrame, StyleConsts.tags.ScrollFrame)
 
-	local slider = Slider.createComponentFrame(inputManager, defaultSliderVal, onSliderChangedCallback)
+	local slider = Slider.createComponentFrame(defaultSliderVal, onSliderChangedCallback)
 	local sliderTool = ToolFrame.createComponentFrame(slider, "Padding")
 
 	-- Regional patterning is only available on the body
@@ -74,7 +94,7 @@ function StickerPatternToolUI.new(
 		table.insert(componentsList, sliderTool)
 	end
 
-	local grid = StickerGrid.createComponentFrame(stickerData, stickerTool, onAddSticker, true)
+	local grid = self:createStickerGridComponent()
 	local gridTool = ToolFrame.createComponentFrame(grid, "Pattern")
 	gridTool.Parent = scrollingFrame
 

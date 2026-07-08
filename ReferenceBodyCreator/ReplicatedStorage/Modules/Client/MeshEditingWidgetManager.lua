@@ -12,6 +12,7 @@ local Modules = ReplicatedStorage:WaitForChild("Modules")
 local Actions = require(Modules:WaitForChild("Actions"))
 local ModelInfo = require(Modules:WaitForChild("ModelInfo"))
 local Utils = require(Modules:WaitForChild("Utils"))
+local InputUtils = require(Modules:WaitForChild("Client"):WaitForChild("InputUtils"))
 
 local MeshManipulation = Modules:WaitForChild("MeshManipulation")
 local MeshInfo = require(MeshManipulation:WaitForChild("MeshInfo"))
@@ -44,6 +45,7 @@ function MeshEditingWidgetManager.new(modelInfo: ModelInfo.ModelInfoClass, model
 	self.cameraManager = cameraManager
 
 	self.surfaceGuiPart = Instance.new("Part")
+	self.surfaceGuiPart.Name = "MeshEditingWidgetPart"
 	self.surfaceGuiPart.Parent = workspace
 	self.surfaceGuiPart.Transparency = 1
 	self.surfaceGuiPart.Anchored = true
@@ -97,14 +99,18 @@ function MeshEditingWidgetManager.new(modelInfo: ModelInfo.ModelInfoClass, model
 			and (
 				input.UserInputType == Enum.UserInputType.MouseMovement
 				or input.UserInputType == Enum.UserInputType.Touch
-				or (Utils.isVirtualCursor(input.UserInputType) and input.KeyCode == Enum.KeyCode.Thumbstick1)
+				or (InputUtils.isVirtualCursor(input.UserInputType) and input.KeyCode == Enum.KeyCode.Thumbstick1)
 			)
 		then
 			self:DragWidget(self.draggingWidget, input)
 		end
 	end)
 
-	self.connections["inputEnded"] = UserInputService.InputEnded:Connect(function(_input)
+	self.connections["inputEnded"] = UserInputService.InputEnded:Connect(function(input)
+		if InputUtils.isVirtualCursor(input.UserInputType) and input.KeyCode ~= Enum.KeyCode.ButtonA then
+			return
+		end
+
 		if self.draggingWidget then
 			if self.lastWidgetAction then
 				SendActionToServerEvent:FireServer(self.lastWidgetAction)
@@ -504,7 +510,7 @@ local function SnapWorldPointToControl(point: Vector3, control: MeshInfo.WidgetC
 end
 
 function MeshEditingWidgetManager:DragWidget(widgetController: WidgetController, input)
-	local position = input.Position
+	local position = InputUtils.getInputPosition(input)
 	if self.prevMousePos ~= Vector2.zero then
 		local mouseHitPoint = LocalPlayer:GetMouse().Hit.Position
 		local direction = (mouseHitPoint - workspace.CurrentCamera.CFrame.Position).Unit
@@ -546,6 +552,7 @@ end
 
 function MeshEditingWidgetManager:Destroy()
 	self.surfaceGuiPart:Destroy()
+	self.surfaceGui:Destroy()
 
 	for _, connection in self.connections do
 		connection:Disconnect()

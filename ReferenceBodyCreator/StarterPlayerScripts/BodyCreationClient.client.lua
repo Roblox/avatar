@@ -5,6 +5,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local GamepadService = game:GetService("GamepadService")
 local GuiService = game:GetService("GuiService")
+local UserInputService = game:GetService("UserInputService")
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")
 
@@ -12,9 +13,14 @@ local ResolutionManager = require(Modules:WaitForChild("ResolutionManager"))
 
 local Client = Modules:WaitForChild("Client")
 local UI = Client:WaitForChild("UI")
-local SwitchEditorsModalUI = require(UI:WaitForChild("SwitchEditorsModalUI"))
-local Style = require(UI:WaitForChild("Style"))
-local BaseUI = require(UI:WaitForChild("BaseUI"))
+
+local Style = UI:WaitForChild("Style")
+local StyleSheet = require(Style:WaitForChild("StyleSheet"))
+local StyleUtils = require(Style:WaitForChild("StyleUtils"))
+
+local Handlers = UI:WaitForChild("Handlers")
+local SwitchEditorsModalUI = require(Handlers:WaitForChild("SwitchEditorsModalUI"))
+local BaseUI = require(Handlers:WaitForChild("BaseUI"))
 local Message = require(UI:WaitForChild("Message"))
 local MeshEditingWidgetManager = require(Client:WaitForChild("MeshEditingWidgetManager"))
 
@@ -54,6 +60,7 @@ local InitializeServerModelEvent = Remotes:WaitForChild("InitializeServerModelEv
 local ResetPlayerModelServerEvent = Remotes:WaitForChild("ResetPlayerModelServer")
 local ResetCompleteEvent = Remotes:WaitForChild("ResetCompleteEvent")
 local SendActionToServerEvent = Remotes:WaitForChild("SendActionToServerEvent")
+local GetCreationPriceFunction = Remotes:WaitForChild("GetCreationPriceFunction")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -163,23 +170,84 @@ function CreationManager.new(modelInfo: ModelInfo.ModelInfoClass)
 		MeshEditingWidgetManager.new(self.modelInfo, self.modelDisplay, self.inputManager, self.cameraManager)
 
 	-- Enable virtual cursor on console when entering edit mode
-	if GuiService:IsTenFootInterface() then
+	if UserInputService.PreferredInput == Enum.PreferredInput.Gamepad then
 		GamepadService:EnableGamepadCursor(nil)
 	end
+
+	self.inputTypeChangedConn = UserInputService:GetPropertyChangedSignal("PreferredInput"):Connect(function()
+		if UserInputService.PreferredInput == Enum.PreferredInput.Gamepad then
+			GamepadService:EnableGamepadCursor(nil)
+		else
+			GamepadService:DisableGamepadCursor(nil)
+		end
+	end)
 
 	local screenGui = LocalPlayer:WaitForChild("PlayerGui"):WaitForChild("ScreenGui")
 
 	if not self.screenSizeChangedConn then
 		self.screenSizeChangedConn = screenGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-			self.isMobile = Utils.getIsMobile(screenGui)
+			self.isMobile = StyleUtils.GetIsMobile(screenGui)
 		end)
 	end
-	self.isMobile = Utils.getIsMobile(screenGui)
+	self.isMobile = StyleUtils.GetIsMobile(screenGui)
 
 	return self
 end
 
 local lastEditedModelInfo = nil
+
+local function DownresCreationWrapper(creationFunction)
+	-- Reset resolution at the start of each creation attempt
+	ResolutionManager.ResetResolution()
+
+	local maxAttempts = #Constants.TEXTURE_RESOLUTION_STEPS
+	local attempts = 0
+	local success = false
+
+	while attempts < maxAttempts and not success do
+		attempts = attempts + 1
+
+		local result, err = pcall(function()
+			creationFunction()
+		end)
+
+		if result then
+			success = true
+		else
+			warn(err)
+			-- Check if error was due to memory constraints
+			if string.find(err, Constants.FAILED_TO_CREATE_EI_MSG) then
+				if attempts < maxAttempts then
+					warn(
+						"Attempting to step down resolution and retry setup. Attempt "
+							.. attempts
+							.. " of "
+							.. maxAttempts
+					)
+					-- Step down resolution for the subsequent setup attempt
+					ResolutionManager.StepDownResolution()
+
+					-- Reset model on the server to free up action queue and memory
+					ResetPlayerModelServerEvent:FireServer()
+					-- Wait for the reset to complete so we do not attempt to spin up creation before resetting completes
+					ResetCompleteEvent.OnClientEvent:Wait()
+				else
+					-- If all attempts failed, show error message
+					Message.CreateMessageGui("Setup failed, out of Memory.")
+				end
+			-- Check if error was due to incorrect game settings
+			elseif string.find(err, Constants.FIX_MESH_IMAGE_SETTINGS_MSG) then
+				Message.CreateMessageGui(
+					"EditableImage and EditableMesh are not accessible. Go to the Security Tab in Game Settings to enable this API."
+				)
+			else
+				-- If error was not related to memory, don't retry
+				Message.CreateMessageGui("Unexpected error.")
+				break
+			end
+		end
+	end
+end
 
 local function DestroyLastModel()
 	if lastEditedModelInfo then
@@ -286,6 +354,10 @@ function CreationManager:Quit()
 		self.screenSizeChangedConn:Disconnect()
 		self.screenSizeChangedConn = nil
 	end
+	if self.inputTypeChangedConn then
+		self.inputTypeChangedConn:Disconnect()
+		self.inputTypeChangedConn = nil
+	end
 
 	workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
 	local characterRoot = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -298,7 +370,7 @@ function CreationManager:Quit()
 
 	GetPlayerControls():Enable()
 
-	if GuiService:IsTenFootInterface() then
+	if UserInputService.PreferredInput == Enum.PreferredInput.Gamepad then
 		-- Disable virtual cursor on console when leaving edit mode
 		GamepadService:DisableGamepadCursor(nil)
 	end
@@ -380,11 +452,14 @@ local function InitModelFromBlankData(blankData: BlanksData.BlankData)
 	local currentResolutionIndex = ResolutionManager.GetCurrentIndex()
 	InitializeServerModelEvent:FireServer(blankData.name, currentResolutionIndex)
 
-	return ModelInfo.new(model, blankData)
+	-- Fetch price from token on the server to display on the client
+	local token = Utils.getToken(game.GameId, blankData.avatarAssetType)
+	local creationPrice = GetCreationPriceFunction:InvokeServer(token)
+	return ModelInfo.new(model, blankData, creationPrice)
 end
 
 local function OpenSwitchEditorsModal(blankData)
-	local style = Style.new()
+	local style = StyleSheet.new()
 
 	local onBuyCallback = function()
 		BuyRemoteEvent:FireServer()
@@ -392,10 +467,12 @@ local function OpenSwitchEditorsModal(blankData)
 	end
 
 	local onContinueCallback = function()
-		lastEditedModelInfo = InitModelFromBlankData(blankData)
-		UpdateCameraForEditMode(lastEditedModelInfo)
-		CreationManager.new(lastEditedModelInfo)
-		style:Destroy()
+		DownresCreationWrapper(function()
+			lastEditedModelInfo = InitModelFromBlankData(blankData)
+			UpdateCameraForEditMode(lastEditedModelInfo)
+			CreationManager.new(lastEditedModelInfo)
+			style:Destroy()
+		end)
 	end
 
 	local onCancelCallback = function()
@@ -414,21 +491,25 @@ end
 -- modelInfo is reused (maintaining all previous edits).
 -- Otherwise, a new modelInfo is created from the blank data.
 local function EnterCreationMode(modelName)
-	local blankData = Utils.GetBlankDataByName(modelName)
-	if not blankData then
-		warn("No blank data found for model name: " .. modelName)
-		return
-	end
+	-- Reset resolution at the start of each creation attempt
+	DownresCreationWrapper(function()
+		local blankData = Utils.GetBlankDataByName(modelName)
+		if not blankData then
+			warn("No blank data found for model name: " .. modelName)
+			return
+		end
 
-	if not lastEditedModelInfo then
-		lastEditedModelInfo = InitModelFromBlankData(blankData)
-	elseif lastEditedModelInfo:GetBlankName() ~= modelName then
-		OpenSwitchEditorsModal(blankData)
-		return
-	end
+		if not lastEditedModelInfo then
+			lastEditedModelInfo = InitModelFromBlankData(blankData)
+		elseif lastEditedModelInfo:GetBlankName() ~= modelName then
+			OpenSwitchEditorsModal(blankData)
+			return
+		end
 
-	UpdateCameraForEditMode(lastEditedModelInfo)
-	CreationManager.new(lastEditedModelInfo)
+		UpdateCameraForEditMode(lastEditedModelInfo)
+
+		CreationManager.new(lastEditedModelInfo)
+	end)
 end
 
 local debounceEnterModel = false
@@ -441,45 +522,7 @@ local function EnterCreationModeInitial(modelName)
 
 	local loadingScreen = getLoadingScreen()
 
-	-- Reset resolution at the start of each creation attempt
-	ResolutionManager.ResetResolution()
-
-	local maxAttempts = #Constants.TEXTURE_RESOLUTION_STEPS
-	local attempts = 0
-	local success = false
-
-	while attempts < maxAttempts and not success do
-		attempts = attempts + 1
-
-		local result, err = pcall(function()
-			EnterCreationMode(modelName)
-		end)
-
-		if result then
-			success = true
-		else
-			warn(err)
-			-- Check if error was due to memory constraints
-			if string.find(err, Constants.FAILED_TO_CREATE_EI_MSG) then
-				if attempts < maxAttempts then
-					-- Step down resolution for the subsequent setup attempt
-					ResolutionManager.StepDownResolution()
-
-					-- Reset model on the server to free up action queue and memory
-					ResetPlayerModelServerEvent:FireServer()
-					-- Wait for the reset to complete so we do not attempt to spin up creation before resetting completes
-					ResetCompleteEvent.OnClientEvent:Wait()
-				else
-					-- If all attempts failed, show error message
-					Message.CreateMessageGui("Setup failed, out of Memory.")
-				end
-			else
-				-- If error was not related to memory, don't retry
-				Message.CreateMessageGui("Unexpected error.")
-				break
-			end
-		end
-	end
+	EnterCreationMode(modelName)
 
 	loadingScreen.Visible = false
 

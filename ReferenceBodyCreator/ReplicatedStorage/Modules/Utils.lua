@@ -1,5 +1,4 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local GamepadService = game:GetService("GamepadService")
 local AvatarCreationService = game:GetService("AvatarCreationService")
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")
@@ -7,12 +6,6 @@ local Modules = ReplicatedStorage:WaitForChild("Modules")
 local Config = Modules:WaitForChild("Config")
 local BlanksData = require(Config:WaitForChild("BlanksData"))
 local Constants = require(Config:WaitForChild("Constants"))
-
--- deadzone is the distance from the center of the thumbstick that the thumbstick has to move before it registers
-local THUMBSTICK_DEADZONE = 0.2
-local MAX_ZOOM_SPEED = 10
-local MIN_AXIS_THRESHOLD = 0.5
-local MAX_STICK_ANGULAR_SPEED = math.rad(140) -- Radians per second
 
 local utils = {}
 
@@ -450,39 +443,6 @@ utils.GetBlankDataByName = function(blankName): BlanksData.BlankData?
 	return nil
 end
 
--- Handles thumbstick deadzones for gamepad support
-utils.normalizeStickByDeadzone = function(stickVector: Vector2)
-	local magnitude = stickVector.Magnitude
-	if magnitude < THUMBSTICK_DEADZONE then
-		return Vector2.new(0, 0)
-	else
-		return (magnitude - THUMBSTICK_DEADZONE) / (1 - THUMBSTICK_DEADZONE) * stickVector.Unit
-	end
-end
-
-utils.rotateAndZoom = function(
-	inputObject: InputObject,
-	deltaTime: number,
-	rotateByDegrees: ((number, number) -> ())?,
-	zoomStraight: ((number) -> ())?
-)
-	local stickInput = utils.normalizeStickByDeadzone(Vector2.new(inputObject.Position.X, inputObject.Position.Y))
-	if stickInput == Vector2.new(0, 0) then
-		return
-	end
-
-	if rotateByDegrees and (math.abs(stickInput.X) > MIN_AXIS_THRESHOLD or math.abs(stickInput.Y) > MIN_AXIS_THRESHOLD) then
-		local radiansToDegrees = 180 / math.pi
-		local degreesX = deltaTime * stickInput.X * MAX_STICK_ANGULAR_SPEED * radiansToDegrees
-		local degreesY = deltaTime * stickInput.Y * MAX_STICK_ANGULAR_SPEED * radiansToDegrees
-		rotateByDegrees(degreesX, degreesY)
-	end
-
-	if zoomStraight and math.abs(stickInput.Y) > MIN_AXIS_THRESHOLD then
-		zoomStraight(deltaTime * -stickInput.Y * MAX_ZOOM_SPEED)
-	end
-end
-
 --[[
     Get a publish token for a given universeId.
     If assetType is passed, returns the accessory token for that type (if it exists).
@@ -491,17 +451,16 @@ end
 ]]
 utils.getToken = function(universeId, avatarAssetType)
 	local universeEntry = Constants.TOKENS[universeId]
-    if not universeEntry then
-        return nil
-    end
+	if not universeEntry then
+		return nil
+	end
 
-    if avatarAssetType then
-        return universeEntry.accessories and universeEntry.accessories[avatarAssetType] or nil
-    else
-        return universeEntry.body
-    end
+	if avatarAssetType then
+		return universeEntry.accessories and universeEntry.accessories[avatarAssetType] or nil
+	else
+		return universeEntry.body
+	end
 end
-
 
 --[[
 	Given a creation token, return the expected price for a creation
@@ -509,8 +468,12 @@ end
 	will indicate to the ui to show "Publish" on the Buy Button.
 ]]
 utils.getPriceForCreation = function(token)
+	if not token then
+		return 0
+	end
+
 	local complete, result = pcall(function()
-		return AvatarCreationService:GetBatchTokenDetailsAsync({token})
+		return AvatarCreationService:GetBatchTokenDetailsAsync({ token })
 	end)
 	if complete then
 		local tokenData = result[1]
@@ -524,77 +487,12 @@ utils.getPriceForCreation = function(token)
 	end
 end
 
-local gamepadInputTypes = {
-	[Enum.UserInputType.Gamepad1] = true,
-	[Enum.UserInputType.Gamepad2] = true,
-	[Enum.UserInputType.Gamepad3] = true,
-	[Enum.UserInputType.Gamepad4] = true,
-	[Enum.UserInputType.Gamepad5] = true,
-	[Enum.UserInputType.Gamepad6] = true,
-	[Enum.UserInputType.Gamepad7] = true,
-	[Enum.UserInputType.Gamepad8] = true,
-}
-
-function utils.isGamepadInputType(userInputType: Enum.UserInputType): boolean
-	return userInputType and gamepadInputTypes[userInputType] == true
-end
-
-function utils.isVirtualCursor(userInputType: Enum.UserInputType): boolean
-	return utils.isGamepadInputType(userInputType) and GamepadService.GamepadCursorEnabled
-end
-
--- Simple wrapper for adding tags to UI components for style sheet
-function utils.AddStyleTag(component: Instance, tag: string)
-	if not tag then
-		-- Body creation client will capture the warning produced by the AddTag
-		-- method, so this gives us a bit more info.
-		warn(`Cannot tag {component.Name}: tag is nil`)
-	else
-		component:AddTag(tag)
-	end
-end
-
-function utils.RemoveStyleTag(component: Instance, tag: string)
-	if not tag then
-		-- Body creation client will capture the warning produced by the
-		-- RemoveTag method, so this gives us a bit more info.
-		warn(`Cannot untag {component.Name}: tag is nil`)
-	else
-		component:RemoveTag(tag)
-	end
-end
-
-function utils.isValidDraggingInput(input: InputObject)
-	return (
-		input.UserInputType == Enum.UserInputType.Touch
-		or input.UserInputType == Enum.UserInputType.MouseButton1
-		or input.UserInputType == Enum.UserInputType.MouseMovement
-	)
-end
-
-function utils.getMousePositionScaleOnComponent(component: GuiObject, mousePosition: Vector3): Vector2
-	local distanceFromLeft = mousePosition.X - component.AbsolutePosition.X
-	local mousePositionXScale = math.clamp(distanceFromLeft / component.AbsoluteSize.X, 0, 1)
-
-	local distanceFromTop = mousePosition.Y - component.AbsolutePosition.Y
-	local mousePositionYScale = math.clamp(distanceFromTop / component.AbsoluteSize.Y, 0, 1)
-
-	return Vector2.new(mousePositionXScale, mousePositionYScale)
-end
-
 function utils.getBuyButtonString(creationPrice)
 	if creationPrice and creationPrice > 0 then
 		return (Constants.ROBUX_ICON .. " " .. creationPrice)
 	else
 		return "Publish"
 	end
-end
-
-function utils.getIsMobile(screenGui: ScreenGui)
-	if not screenGui then
-		return false
-	end
-	return screenGui.AbsoluteSize.X <= Constants.MOBILE_WIDTH_CUTOFF and screenGui.AbsoluteSize.Y <= Constants.MOBILE_WIDTH_CUTOFF
 end
 
 return utils

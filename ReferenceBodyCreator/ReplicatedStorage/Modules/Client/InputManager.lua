@@ -2,14 +2,11 @@ local UserInputService = game:GetService("UserInputService")
 local ContextActionService = game:GetService("ContextActionService")
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local Modules = ReplicatedStorage:WaitForChild("Modules")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
-local Utils = require(Modules:WaitForChild("Utils"))
+local InputUtils = require(script.Parent:WaitForChild("InputUtils"))
 
 -- InputManager is what prevents different parts of the code from stealing input from others.
 -- EG: The user is dragging a scaling handle and their mouse/finger moves too fast and goes off the handle button.
@@ -99,23 +96,26 @@ local function splitInputType(inputObject)
 	local isMouse1 = inputObject.UserInputType == Enum.UserInputType.MouseButton1
 	local isMouse2 = inputObject.UserInputType == Enum.UserInputType.MouseButton2
 	local isMouseMovement = inputObject.UserInputType == Enum.UserInputType.MouseMovement
+	local isGamepadPrimaryButton = inputObject.KeyCode == Enum.KeyCode.ButtonA
+	local isGamepadPrimaryThumbstick = inputObject.KeyCode == Enum.KeyCode.Thumbstick1
 	-- isMouse checks for mouse clicking
 	local isMouse = isMouse1 or isMouse2
 
-	return isTouch, isMouse, isMouse1, isMouse2, isMouseMovement
+	return isTouch, isMouse, isGamepadPrimaryButton, isGamepadPrimaryThumbstick, isMouse1, isMouse2, isMouseMovement
 end
 
 function InputManager:GetActiveInput(inputObject)
-	local isTouch, isMouseButton = splitInputType(inputObject)
+	local isTouch, isMouseButton, isGamepadButton, isGamepadThumbstick = splitInputType(inputObject)
 	local isMouseMovement = inputObject.UserInputType == Enum.UserInputType.MouseMovement
 	local isMouse = isMouseMovement or isMouseButton
+	local isGamepad = isGamepadButton or isGamepadThumbstick
 
-	if not (isMouse or isTouch) then
+	if not (isMouse or isTouch or isGamepad) then
 		return
 	end
 
 	local activeInput
-	if isMouse then
+	if isMouse or isGamepadButton then
 		activeInput = self.activeMouseInput
 	elseif isTouch then
 		activeInput = self.activeTouchInputs[inputObject]
@@ -134,7 +134,7 @@ function InputManager:HandleScroll(inputObject)
 end
 
 function InputManager:OnTouchPinch(touchPositions, scale, velocity, state)
-	if touchPositions[2] == nil then
+	if self:IsLocked() or touchPositions[2] == nil then
 		return
 	end
 
@@ -142,34 +142,42 @@ function InputManager:OnTouchPinch(touchPositions, scale, velocity, state)
 		self.lastPinchDistance = (touchPositions[1] - touchPositions[2]).Magnitude
 		return
 	end
+	if not self.lastPinchDistance then
+		return
+	end
+
 	local pinchDistance = (touchPositions[1] - touchPositions[2]).Magnitude
 	local deltaPinch = pinchDistance - self.lastPinchDistance
 	self.lastPinchDistance = pinchDistance
 	self.cameraManager:ZoomToPoint(deltaPinch, (touchPositions[1] + touchPositions[2]) / 2, true)
+
+	if state == Enum.UserInputState.End then
+		self.lastPinchDistance = nil
+	end
 end
 
 function InputManager:InitializeCameraInteractions()
 	self.onInputBegan = function(inputObject, _gameProcessed)
-		local isTouch, isMouse, isMouse1, _isMouse2 = splitInputType(inputObject)
-		local isValidInputType = isTouch or isMouse
+		local isTouch, isMouse, isGamepadButton, isGamepadThumbstick, isMouse1, _isMouse2 = splitInputType(inputObject)
+		local isValidInputType = isTouch or isMouse or isGamepadButton
 
 		if not isValidInputType then
 			return
 		end
 
 		local time = tick()
-		if isMouse1 then
+		if isMouse1 or isGamepadButton then
 			self.lastDragPosition = inputObject.Position
 		end
 
-		self:AddActivePointerInput(inputObject, isMouse, time)
+		self:AddActivePointerInput(inputObject, isMouse, isGamepadButton, time)
 	end
 
 	self.onInputChanged = function(inputObject, gameProcessedEvent)
 		if self:IsLocked() or gameProcessedEvent then
 			return
 		end
-		local isTouch, _isMouse, _isMouse1, _isMouse2, isMouseMovement = splitInputType(inputObject)
+		local isTouch, _isMouse, _isGamepadButton, _isGamepadThumbstick, _isMouse1, _isMouse2, isMouseMovement = splitInputType(inputObject)
 		local isValidInputType = isMouseMovement or isTouch
 
 		if not isValidInputType then
@@ -211,8 +219,9 @@ function InputManager:InitializeCameraInteractions()
 	end
 
 	self.onInputEnded = function(inputObject, _gameProcessedEvent)
-		local isTouch, isMouse, _isMouse1, _isMouse2, _isMouseMovement = splitInputType(inputObject)
-		local isValidInputType = isTouch or isMouse
+		local isTouch, isMouse, isGamepadButton, _isGamepadThumbstick, _isMouse1, _isMouse2, _isMouseMovement = splitInputType(inputObject)
+
+		local isValidInputType = isTouch or isMouse or isGamepadButton
 
 		if not isValidInputType then
 			return
@@ -223,7 +232,7 @@ function InputManager:InitializeCameraInteractions()
 			return
 		end
 
-		self:RemoveActivePointerInput(inputObject, isMouse)
+		self:RemoveActivePointerInput(inputObject, isMouse, isGamepadButton)
 		if self.numActiveTouchInputs == 0 then
 			self.isLocked = false
 			self.objectWithLock = nil
@@ -231,7 +240,7 @@ function InputManager:InitializeCameraInteractions()
 	end
 end
 
-function InputManager:AddActivePointerInput(inputObject, isMouse, time)
+function InputManager:AddActivePointerInput(inputObject, isMouse, isGamepadButton, time)
 	if self:GetActiveInput(inputObject) then
 		return
 	end
@@ -241,7 +250,7 @@ function InputManager:AddActivePointerInput(inputObject, isMouse, time)
 		lastTime = time,
 	}
 
-	if isMouse then
+	if isMouse or isGamepadButton then
 		self.activeMouseInput = activeInput
 	else
 		activeInput.lastDeltaTime = 0
@@ -264,14 +273,14 @@ function InputManager:DisconnectEvents()
 	self.connections["inputEnded"] = nil
 end
 
-function InputManager:RemoveActivePointerInput(inputObject, isMouse)
-	if isMouse then
+function InputManager:RemoveActivePointerInput(inputObject, isMouse, isGamepadButton)
+	if isMouse or isGamepadButton then
 		local allMouseButtonsReleased = not (
 			UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
 			or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
 		)
 
-		if allMouseButtonsReleased then
+		if allMouseButtonsReleased or inputObject.UserInputType == Enum.UserInputType.Gamepad1 then
 			self.activeMouseInput = nil
 		else
 			return
@@ -290,15 +299,15 @@ end
 function InputManager:SetUpGamepad()
 	ContextActionService:UnbindAction("RotateAndZoom")
 	ContextActionService:BindAction("RotateAndZoom", self.storeInput, false, Enum.KeyCode.Thumbstick2)
-	local rotateByDegrees = function(degreesX, degreesY)
-		self.modelDisplay:RotateModelFromDegrees(degreesX, degreesY)
+	local rotateByDegrees = function(degreesX, _degreesY)
+		self.modelDisplay:RotateModelFromDegrees(degreesX, 0)
 	end
 	local zoomStraight = function(zoomDelta)
 		self.cameraManager:ZoomToPoint(-zoomDelta, self.modelDisplay:GetScreenPosition())
 	end
 	local gamePadConnection = RunService.RenderStepped:Connect(function(deltaTime)
 		if self.inputState == Enum.UserInputState.Change and self.inputObject then
-			Utils.rotateAndZoom(self.inputObject, deltaTime, rotateByDegrees, zoomStraight)
+			InputUtils.rotateAndZoom(self.inputObject, deltaTime, rotateByDegrees, zoomStraight)
 		end
 	end)
 	self.connections["gamePadConnection"] = gamePadConnection

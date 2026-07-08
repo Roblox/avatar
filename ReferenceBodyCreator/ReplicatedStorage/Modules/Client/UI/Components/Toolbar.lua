@@ -6,14 +6,13 @@
 	Includes methods for making and removing selections.
 ]]
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Modules = ReplicatedStorage:WaitForChild("Modules")
-local Client = Modules:WaitForChild("Client")
-local UI = Client:WaitForChild("UI")
-local Components = UI:WaitForChild("Components")
+local UI = script.Parent.Parent
 
-local Utils = require(Modules:WaitForChild("Utils"))
-local StyleConsts = require(UI:WaitForChild("StyleConsts"))
+local Style = UI:WaitForChild("Style")
+local StyleConsts = require(Style:WaitForChild("StyleConsts"))
+local StyleUtils = require(Style:WaitForChild("StyleUtils"))
+
+local Components = UI:WaitForChild("Components")
 local ToolbarButtonGroup = require(Components:WaitForChild("ToolbarButtonGroup"))
 
 local Toolbar = {}
@@ -23,17 +22,17 @@ function Toolbar:MakeSelection(i: number)
 	if self.currentSelection and self.currentSelection ~= i then
 		local currentButtonGroup = self.buttonGroups[self.currentSelection]
 		currentButtonGroup:HideExpanded()
-		Utils.RemoveStyleTag(currentButtonGroup:GetFrame(), StyleConsts.tags.ButtonSelected)
+		StyleUtils.RemoveStyleTag(currentButtonGroup:GetFrame(), StyleConsts.tags.ButtonSelected)
 	end
 	self.currentSelection = i
-	Utils.AddStyleTag(self.buttonGroups[i]:GetFrame(), StyleConsts.tags.ButtonSelected)
+	StyleUtils.AddStyleTag(self.buttonGroups[i]:GetFrame(), StyleConsts.tags.ButtonSelected)
 end
 
 function Toolbar:RemoveSelection()
 	if self.currentSelection then
 		local currentButtonGroup = self.buttonGroups[self.currentSelection]
 		currentButtonGroup:HideExpanded()
-		Utils.RemoveStyleTag(currentButtonGroup:GetFrame(), StyleConsts.tags.ButtonSelected)
+		StyleUtils.RemoveStyleTag(currentButtonGroup:GetFrame(), StyleConsts.tags.ButtonSelected)
 		self.currentSelection = nil
 	end
 end
@@ -42,13 +41,13 @@ function Toolbar:GetFrame()
 	return self.frame
 end
 
-function Toolbar.new(toolbarButtonGroupInfos: { ToolbarButtonGroup.ToolbarButtonGroupInfo })
+function Toolbar.new(toolbarButtonGroupInfos: { ToolbarButtonGroup.ToolbarButtonGroupInfo }, reselectCallback: () -> ())
 	local self = {}
 	setmetatable(self, Toolbar)
 
 	self.frame = Instance.new("Frame")
 	self.frame.Name = "Toolbar"
-	Utils.AddStyleTag(self.frame, StyleConsts.tags.Toolbar)
+	StyleUtils.AddStyleTag(self.frame, StyleConsts.tags.Toolbar)
 
 	self.currentSelection = nil
 	self.buttonGroups = {}
@@ -59,6 +58,7 @@ function Toolbar.new(toolbarButtonGroupInfos: { ToolbarButtonGroup.ToolbarButton
 		local primaryButtonCallback = toolbarButtonGroupInfo[1].callback
 		local newPrimaryButton = {
 			iconId = toolbarButtonGroupInfo[1].iconId,
+			mutedIconId = toolbarButtonGroupInfo[1].mutedIconId,
 			callback = function()
 				self:MakeSelection(i)
 				primaryButtonCallback()
@@ -67,7 +67,7 @@ function Toolbar.new(toolbarButtonGroupInfos: { ToolbarButtonGroup.ToolbarButton
 		toolbarButtonGroupInfo[1] = newPrimaryButton
 
 		-- Create and insert button group
-		local toolbarButtonGroup = ToolbarButtonGroup.new(toolbarButtonGroupInfo)
+		local toolbarButtonGroup = ToolbarButtonGroup.new(toolbarButtonGroupInfo, reselectCallback)
 		table.insert(self.buttonGroups, toolbarButtonGroup)
 		local toolbarButtonGroupFrame = toolbarButtonGroup:GetFrame()
 		toolbarButtonGroupFrame.Parent = self.frame

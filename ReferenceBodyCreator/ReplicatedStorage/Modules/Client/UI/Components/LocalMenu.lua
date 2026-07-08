@@ -4,30 +4,34 @@
 	Meant to emulate the style of the the Roblox top bar menu.
 ]]
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Modules = ReplicatedStorage:WaitForChild("Modules")
-local Client = Modules:WaitForChild("Client")
-local UI = Client:WaitForChild("UI")
-local Components = UI:WaitForChild("Components")
+local GuiService = game:GetService("GuiService")
 
-local Utils = require(Modules:WaitForChild("Utils"))
-local StyleConsts = require(UI:WaitForChild("StyleConsts"))
-local IconButton = require(Components:WaitForChild("IconButton"))
+local UI = script.Parent.Parent
+
+local Style = UI:WaitForChild("Style")
+local StyleConsts = require(Style:WaitForChild("StyleConsts"))
+local StyleUtils = require(Style:WaitForChild("StyleUtils"))
+
+local Components = UI:WaitForChild("Components")
+local LocalMenuButtonGroup = require(Components:WaitForChild("LocalMenuButtonGroup"))
 
 local LocalMenu = {}
 
-function LocalMenu.createComponentFrame(buttonInfos: { IconButton.IconButtonInfo })
+function LocalMenu.createComponentFrame(localMenuButtonGroupInfos: { LocalMenuButtonGroup.localMenuButtonGroupInfo })
 	local localMenu = Instance.new("Frame")
 	localMenu.Name = "LocalMenu"
 
 	-- Most styling is done via StyleSheets -- see UI/Style.lua
-	Utils.AddStyleTag(localMenu, StyleConsts.tags.LocalMenu)
+	if GuiService:IsTenFootInterface() then
+		StyleUtils.AddStyleTag(localMenu, StyleConsts.tags.LocalMenuConsole)
+	else
+		StyleUtils.AddStyleTag(localMenu, StyleConsts.tags.LocalMenu)
+	end
 
-	for i, buttonInfo in buttonInfos do
-		local button = IconButton.createComponentFrame(buttonInfo.icon, buttonInfo.callback)
-		button.LayoutOrder = i
-		button.Parent = localMenu
-		Utils.AddStyleTag(button, StyleConsts.tags.LocalMenuButton)
+	for i, buttonGroupInfo in localMenuButtonGroupInfos do
+		local buttonGroup = LocalMenuButtonGroup.createComponentFrame(buttonGroupInfo)
+		buttonGroup.LayoutOrder = i
+		buttonGroup.Parent = localMenu
 	end
 
 	return localMenu

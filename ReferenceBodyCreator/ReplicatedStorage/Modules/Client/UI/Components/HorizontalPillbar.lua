@@ -6,15 +6,13 @@
 	selected by default.
 ]]
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Modules = ReplicatedStorage:WaitForChild("Modules")
-local Client = Modules:WaitForChild("Client")
+local UI = script.Parent.Parent
 
-local UI = Client:WaitForChild("UI")
+local Style = UI:WaitForChild("Style")
+local StyleConsts = require(Style:WaitForChild("StyleConsts"))
+local StyleUtils = require(Style:WaitForChild("StyleUtils"))
+
 local Components = UI:WaitForChild("Components")
-local Utils = require(Modules:WaitForChild("Utils"))
-local StyleConsts = require(UI:WaitForChild("StyleConsts"))
-
 local IconButton = require(Components:WaitForChild("IconButton"))
 
 local HorizontalPillbarInternal = {}
@@ -22,8 +20,8 @@ HorizontalPillbarInternal.__index = HorizontalPillbarInternal
 
 function HorizontalPillbarInternal:applySelection(newSelectionIndex)
 	if newSelectionIndex ~= self.currentSelection then
-		Utils.AddStyleTag(self.buttonList[newSelectionIndex], StyleConsts.tags.ButtonSelected)
-		Utils.RemoveStyleTag(self.buttonList[self.currentSelection], StyleConsts.tags.ButtonSelected)
+		StyleUtils.AddStyleTag(self.buttonList[newSelectionIndex], StyleConsts.tags.ButtonSelected)
+		StyleUtils.RemoveStyleTag(self.buttonList[self.currentSelection], StyleConsts.tags.ButtonSelected)
 		self.currentSelection = newSelectionIndex
 	end
 end
@@ -38,7 +36,7 @@ function HorizontalPillbarInternal.new(pillbarButtonStack: { IconButton.IconButt
 	self.frame.Name = "HorizontalPillbar"
 
 	-- Most styling is done via StyleSheets via tag -- see UI/Style.lua
-	Utils.AddStyleTag(self.frame, StyleConsts.tags.HorizontalPillbar)
+	StyleUtils.AddStyleTag(self.frame, StyleConsts.tags.HorizontalPillbar)
 
 	-- Create buttons from button stack
 	for i, pillbarButtonInfo in pillbarButtonStack do
@@ -50,15 +48,15 @@ function HorizontalPillbarInternal.new(pillbarButtonStack: { IconButton.IconButt
 		pillbarButton.Parent = self.frame
 		pillbarButton.LayoutOrder = i
 		if #pillbarButtonStack < StyleConsts.styleTokens.MaxLargePillbarButtons then
-			Utils.AddStyleTag(pillbarButton, StyleConsts.tags.LargePillbarButton)
+			StyleUtils.AddStyleTag(pillbarButton, StyleConsts.tags.LargePillbarButton)
 		else
-			Utils.AddStyleTag(pillbarButton, StyleConsts.tags.SmallPillbarButton)
+			StyleUtils.AddStyleTag(pillbarButton, StyleConsts.tags.SmallPillbarButton)
 		end
 		table.insert(self.buttonList, pillbarButton)
 	end
 
 	-- Make first button selected
-	Utils.AddStyleTag(self.buttonList[1], StyleConsts.tags.ButtonSelected)
+	StyleUtils.AddStyleTag(self.buttonList[1], StyleConsts.tags.ButtonSelected)
 
 	return self
 end

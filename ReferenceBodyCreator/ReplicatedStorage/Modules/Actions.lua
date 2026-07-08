@@ -19,6 +19,7 @@ Actions.ActionTypes = {
 	-- Image Edit Actions
 	Recolor = "Recolor",
 	RecolorRegion = "RecolorRegion",
+	ApplyPBRToRegion = "ApplyPBRToRegion",
 	BrushStroke = "BrushStroke",
 	ClearBrush = "ClearBrush",
 	LinearBrush = "LinearBrush",
@@ -42,6 +43,7 @@ local ActionProcessorMap = {
 	-- Image Edit Actions
 	[Actions.ActionTypes.Recolor] = ImageEditActions.RecolorAction,
 	[Actions.ActionTypes.RecolorRegion] = ImageEditActions.RecolorRegionAction,
+	[Actions.ActionTypes.ApplyPBRToRegion] = ImageEditActions.ApplyPBRToRegionAction,
 	[Actions.ActionTypes.BrushStroke] = ImageEditActions.BrushStrokeAction,
 	[Actions.ActionTypes.ClearBrush] = ImageEditActions.ClearBrushAction,
 	[Actions.ActionTypes.LinearBrush] = ImageEditActions.LinearBrushAction,

@@ -4,26 +4,56 @@
 	markers dynamically. Used for painting and fill texture editing UIs.
 ]]
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Modules = ReplicatedStorage:WaitForChild("Modules")
-local Client = Modules:WaitForChild("Client")
+local GuiService = game:GetService("GuiService")
 
-local UI = Client:WaitForChild("UI")
-local Utils = require(Modules:WaitForChild("Utils"))
-local StyleConsts = require(UI:WaitForChild("StyleConsts"))
-
-local Config = Modules:WaitForChild("Config")
-local Constants = require(Config:WaitForChild("Constants"))
+local UI = script.Parent.Parent
+local Style = UI:WaitForChild("Style")
+local StyleConsts = require(Style:WaitForChild("StyleConsts"))
+local StyleUtils = require(Style:WaitForChild("StyleUtils"))
 
 local ColorPickerInternal = {}
 ColorPickerInternal.__index = ColorPickerInternal
 
-local function makeHuePicker()
+function ColorPickerInternal:ConnectDragDetector(dragDetector: UIDragDetector, setPropertyCallback: (Vector2) -> nil)
+	-- This connects a dragDetector to its parent and a property setting.
+
+	local topLeftInset = GuiService:GetInsetArea(Enum.ScreenInsets.None).Min
+
+	dragDetector.ResponseStyle = Enum.UIDragDetectorResponseStyle.CustomScale
+
+	assert(
+		dragDetector.Parent and dragDetector.Parent:IsA("GuiObject"),
+		"UI Drag Detector must be parented to a GuiObject"
+	)
+
+	dragDetector.DragStart:Connect(function(inputPos)
+		setPropertyCallback(StyleUtils.GetMousePositionScaleOnComponent(dragDetector.Parent, inputPos + topLeftInset))
+		self.OnColorChangedCallback(self:GetColor(), false --[[isInputEnding]])
+	end)
+	dragDetector.DragContinue:Connect(function(inputPos)
+		setPropertyCallback(StyleUtils.GetMousePositionScaleOnComponent(dragDetector.Parent, inputPos + topLeftInset))
+		self.OnColorChangedCallback(self:GetColor(), false --[[isInputEnding]])
+	end)
+	dragDetector.DragEnd:Connect(function(inputPos)
+		setPropertyCallback(StyleUtils.GetMousePositionScaleOnComponent(dragDetector.Parent, inputPos + topLeftInset))
+		self.OnColorChangedCallback(self:GetColor(), true --[[isInputEnding]])
+	end)
+end
+
+function ColorPickerInternal:makeHuePicker()
 	-- This creates the slider for picking hue
 
-	local huePicker = Instance.new("ImageButton")
+	local huePicker = Instance.new("Frame")
 	huePicker.Name = "HuePicker"
-	Utils.AddStyleTag(huePicker, StyleConsts.tags.HuePicker)
+	StyleUtils.AddStyleTag(huePicker, StyleConsts.tags.HuePicker)
+
+	-- Add the ui drag detector for moving the color dot
+	local dragDetector = Instance.new("UIDragDetector")
+	dragDetector.Parent = huePicker
+
+	self:ConnectDragDetector(dragDetector, function(scalePosition: Vector2)
+		self:SetHue(scalePosition)
+	end)
 
 	return huePicker
 end
@@ -33,17 +63,57 @@ local function makeColorDot()
 	colorDot.Name = "ColorDot"
 	-- While some styling is done in the stylesheet, because the color picker is
 	-- updating dynamically, we also do a lot of styling in functions.
-	Utils.AddStyleTag(colorDot, StyleConsts.tags.ColorDot)
+	StyleUtils.AddStyleTag(colorDot, StyleConsts.tags.ColorDot)
 
 	return colorDot
+end
+
+local function makeOpacityDot()
+	local colorDot = makeColorDot()
+	colorDot.Name = "OpacityDot"
+	return colorDot
+end
+
+function ColorPickerInternal:makeOpacitySlider()
+	-- This creates the slider for picking opacity
+
+	local opacityPicker = Instance.new("ImageLabel")
+	opacityPicker.Name = "OpacityPicker"
+	StyleUtils.AddStyleTag(opacityPicker, StyleConsts.tags.OpacityPicker)
+
+	local opacityOverlay = Instance.new("Frame")
+	opacityOverlay.Name = "OpacityOverlay"
+	StyleUtils.AddStyleTag(opacityOverlay, StyleConsts.tags.OpacityOverlay)
+	opacityOverlay.Parent = opacityPicker
+
+	self.opacityGradient = Instance.new("UIGradient")
+	self.opacityGradient.Name = "OpacityGradient"
+	StyleUtils.AddStyleTag(self.opacityGradient, StyleConsts.tags.OpacityGradient)
+	self.opacityGradient.Parent = opacityOverlay
+
+	self.opacityDot = makeOpacityDot()
+	self.opacityDot.Parent = opacityPicker
+	self.opacityDot.Position = UDim2.fromScale(self.opacity, 0.5)
+	self.opacityDot.BackgroundColor3 = self:GetColor()
+	self:UpdateOpacityGradient()
+
+	-- Add the ui drag detector for moving the color dot
+	local dragDetector = Instance.new("UIDragDetector")
+	dragDetector.Parent = opacityPicker
+
+	self:ConnectDragDetector(dragDetector, function(scalePosition: Vector2)
+		self:SetOpacity(scalePosition)
+	end)
+
+	return opacityPicker
 end
 
 function ColorPickerInternal:makeSatValPicker()
 	-- This frame handles picking the saturation and value (brightness) of the color
 
-	local satValPicker = Instance.new("ImageButton")
+	local satValPicker = Instance.new("Frame")
 	satValPicker.Name = "SatValPicker"
-	Utils.AddStyleTag(satValPicker, StyleConsts.tags.SatValPicker)
+	StyleUtils.AddStyleTag(satValPicker, StyleConsts.tags.SatValPicker)
 	-- Since choosing color updates the component, we handle that styling here.
 	satValPicker.BackgroundColor3 = Color3.fromHSV(self.h, 1, 1)
 
@@ -51,12 +121,20 @@ function ColorPickerInternal:makeSatValPicker()
 	local satGradientFrame = Instance.new("Frame")
 	satGradientFrame.Name = "SatGradient"
 	satGradientFrame.Parent = satValPicker
-	Utils.AddStyleTag(satGradientFrame, StyleConsts.tags.SatGradient)
+	StyleUtils.AddStyleTag(satGradientFrame, StyleConsts.tags.SatGradient)
 
 	local valGradientFrame = Instance.new("Frame")
 	valGradientFrame.Name = "ValGradient"
 	valGradientFrame.Parent = satValPicker
-	Utils.AddStyleTag(valGradientFrame, StyleConsts.tags.ValGradient)
+	StyleUtils.AddStyleTag(valGradientFrame, StyleConsts.tags.ValGradient)
+
+	-- Add the ui drag detector for moving the color dot
+	local dragDetector = Instance.new("UIDragDetector")
+	dragDetector.Parent = satValPicker
+
+	self:ConnectDragDetector(dragDetector, function(scaleInput: Vector2)
+		self:SetSatVal(scaleInput)
+	end)
 
 	return satValPicker
 end
@@ -67,23 +145,8 @@ function ColorPickerInternal:SetSatVal(mousePositionScale: Vector2)
 
 	self.satValColorDot.BackgroundColor3 = self:GetColor()
 	self.satValColorDot.Position = UDim2.fromScale(mousePositionScale.X, mousePositionScale.Y)
-end
 
-function ColorPickerInternal:HandleSatValInput(input: InputObject)
-	if input.UserInputType == Enum.UserInputType.MouseMovement and self.isSelectingSatVal ~= true then
-		-- User is just moving mouse, hasn't clicked on the color picker
-		return
-	end
-
-	if self.inputManager:TryGrabLock(self) == false then
-		return
-	end
-
-	if Utils.isValidDraggingInput(input) then
-		self.isSelectingSatVal = true
-		self:SetSatVal(Utils.getMousePositionScaleOnComponent(self.satValPicker, input.Position))
-		self.OnColorChangedCallback(self:GetColor(), false --[[isInputEnding]])
-	end
+	self:UpdateOpacityGradient()
 end
 
 function ColorPickerInternal:SetHue(mousePositionScale: Vector2)
@@ -96,72 +159,64 @@ function ColorPickerInternal:SetHue(mousePositionScale: Vector2)
 
 	self.hueColorDot.BackgroundColor3 = hueColor
 	self.hueColorDot.Position = UDim2.fromScale(self.h, 0.5)
+
+	self:UpdateOpacityGradient()
 end
 
-function ColorPickerInternal:HandleHueInput(input: InputObject)
-	if input.UserInputType == Enum.UserInputType.MouseMovement and self.isSelectingHue ~= true then
-		-- User is just moving mouse, hasn't clicked on the color picker
-		return
+function ColorPickerInternal:SetOpacity(mousePositionScale: Vector2)
+	self.opacity = math.clamp(mousePositionScale.X, 0, 1)
+
+	if self.opacityDot then
+		self.opacityDot.Position = UDim2.fromScale(self.opacity, 0.5)
+		self.opacityDot.BackgroundColor3 = self:GetColor()
+		self.opacityDot.BackgroundTransparency = 1 - self.opacity
 	end
 
-	if self.inputManager:TryGrabLock(self) == false then
-		return
+	if self.OnOpacityChangedCallback then
+		self.OnOpacityChangedCallback(self.opacity)
 	end
-
-	if Utils.isValidDraggingInput(input) then
-		self.isSelectingHue = true
-		self:SetHue(Utils.getMousePositionScaleOnComponent(self.huePicker, input.Position))
-		self.OnColorChangedCallback(self:GetColor(), false --[[isInputEnding]])
-	end
-end
-
-function ColorPickerInternal:HandleInputEnd(input: InputObject)
-	-- Make sure the input that ended is relevant
-	if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
-		return
-	end
-
-	if self.inputManager:TryGrabLock(self) == false then
-		return
-	end
-
-	if self.isSelectingHue then
-		self:SetHue(Utils.getMousePositionScaleOnComponent(self.huePicker, input.Position))
-		self.isSelectingHue = false
-	elseif self.isSelectingSatVal then
-		self:SetSatVal(Utils.getMousePositionScaleOnComponent(self.satValPicker, input.Position))
-		self.isSelectingSatVal = false
-	end
-
-	self.OnColorChangedCallback(self:GetColor(), true --[[isInputEnding]])
 end
 
 function ColorPickerInternal:GetColor()
 	return Color3.fromHSV(self.h, self.s, self.v)
 end
 
-function ColorPickerInternal.new(inputManager, colorPickerCallback)
+function ColorPickerInternal:GetOpacity()
+	return self.opacity
+end
+
+function ColorPickerInternal:UpdateOpacityGradient()
+	if not self.opacityGradient then
+		return
+	end
+
+	local color = self:GetColor()
+
+	-- Same color across the bar and fade from opaque (0) to fully transparent (1)
+	self.opacityGradient.Color = ColorSequence.new(color)
+
+	if self.opacityDot then
+		self.opacityDot.BackgroundColor3 = color
+		self.opacityDot.BackgroundTransparency = 1 - self.opacity
+	end
+end
+
+function ColorPickerInternal.new(colorPickerCallback, opacityPickerCallback)
 	local self = {}
 	setmetatable(self, ColorPickerInternal)
 
-	-- Since this is a draggable component, an input manager is used to prevent
-	-- input from affecting other components if the cursor leaves the component
-	-- while dragging.
-	self.inputManager = inputManager
-
 	self.OnColorChangedCallback = colorPickerCallback
+	self.OnOpacityChangedCallback = opacityPickerCallback
 
-	self.isSelectingHue = false
-	self.isSelectingSatVal = false
-
-	self.h = Constants.DefaultColorPickerColor.h
-	self.s = Constants.DefaultColorPickerColor.s
-	self.v = Constants.DefaultColorPickerColor.v
+	self.h = StyleConsts.DefaultColorPickerColor.h
+	self.s = StyleConsts.DefaultColorPickerColor.s
+	self.v = StyleConsts.DefaultColorPickerColor.v
+	self.opacity = 1
 
 	self.frame = Instance.new("Frame")
 	self.frame.Name = "ColorPicker"
 	-- Most styling is done via StyleSheets via tag -- see UI/Style.lua
-	Utils.AddStyleTag(self.frame, StyleConsts.tags.ColorPicker)
+	StyleUtils.AddStyleTag(self.frame, StyleConsts.tags.ColorPicker)
 
 	-- Create the saturation/value picker UI
 	self.satValPicker = self:makeSatValPicker()
@@ -173,19 +228,8 @@ function ColorPickerInternal.new(inputManager, colorPickerCallback)
 	self.satValColorDot.Position = UDim2.fromScale(self.s, 1 - self.v)
 	self.satValColorDot.BackgroundColor3 = self:GetColor()
 
-	-- Connect input for sat/val
-	self.satValPicker.InputBegan:Connect(function(input)
-		self:HandleSatValInput(input)
-	end)
-	self.satValPicker.InputChanged:Connect(function(input)
-		self:HandleSatValInput(input)
-	end)
-	self.satValPicker.InputEnded:Connect(function(input)
-		self:HandleInputEnd(input)
-	end)
-
 	-- Create the hue picker UI
-	self.huePicker = makeHuePicker()
+	self.huePicker = self:makeHuePicker()
 	self.huePicker.Parent = self.frame
 	self.huePicker.LayoutOrder = 2
 
@@ -194,24 +238,18 @@ function ColorPickerInternal.new(inputManager, colorPickerCallback)
 	self.hueColorDot.Position = UDim2.fromScale(self.h, 0.5)
 	self.hueColorDot.BackgroundColor3 = Color3.fromHSV(self.h, 1, 1)
 
-	-- Connect input for hue
-	self.huePicker.InputBegan:Connect(function(input)
-		self:HandleHueInput(input)
-	end)
-	self.huePicker.InputChanged:Connect(function(input)
-		self:HandleHueInput(input)
-	end)
-	self.huePicker.InputEnded:Connect(function(input)
-		self:HandleInputEnd(input)
-	end)
+	-- Create opacity picker UI
+	self.opacityPicker = self:makeOpacitySlider()
+	self.opacityPicker.Parent = self.frame
+	self.opacityPicker.LayoutOrder = 3
 
 	return self
 end
 
 local ColorPickerPublic = {}
 
-function ColorPickerPublic.createComponentFrame(inputManager, colorPickerCallback)
-	local colorPicker = ColorPickerInternal.new(inputManager, colorPickerCallback)
+function ColorPickerPublic.createComponentFrame(colorPickerCallback, opacityPickerCallback)
+	local colorPicker = ColorPickerInternal.new(colorPickerCallback, opacityPickerCallback)
 
 	return colorPicker.frame
 end

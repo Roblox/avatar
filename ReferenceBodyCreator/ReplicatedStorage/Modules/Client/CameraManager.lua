@@ -53,7 +53,6 @@ function CameraManager.new(modelInfo)
 	self.model = modelInfo:GetModel()
 	self.creationType = modelInfo:GetCreationType()
 	self.modelCFrame = modelInfo:GetInitialModelCFrame()
-	self.creationType = modelInfo:GetCreationType()
 	self.initialLookVector = self.modelCFrame.lookVector
 	self.initialDistance = self:GetCameraDistance(CAMERA_FOV, self.model:GetExtentsSize())
 	self:ResetCamera()
@@ -251,7 +250,7 @@ function CameraManager:PanToLeft(isMobile: boolean?)
 	local absoluteSize = workspace.CurrentCamera.ViewportSize
 	-- move the model to be about a fourth from the edge of the screen
 	local panFromCenterX = absoluteSize.X / 2 - absoluteSize.X / 4
-	
+
 	if self.creationType == Constants.CREATION_TYPES.Accessory and isMobile then
 		panFromCenterX *= MOBILE_ACCESSORY_PAN_XOFFSET_SCALE
 	end

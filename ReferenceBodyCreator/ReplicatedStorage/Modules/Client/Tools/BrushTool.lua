@@ -15,6 +15,7 @@ local ModelInfo = require(Modules:WaitForChild("ModelInfo"))
 local Actions = require(Modules:WaitForChild("Actions"))
 
 local Utils = require(Modules:WaitForChild("Utils"))
+local InputUtils = require(Modules:WaitForChild("Client"):WaitForChild("InputUtils"))
 
 local TextureManipulation = Modules:WaitForChild("TextureManipulation")
 local ImageEditActions = require(TextureManipulation:WaitForChild("ImageEditActions"))
@@ -37,9 +38,6 @@ local SendActionToServerEvent = Remotes:WaitForChild("SendActionToServerEvent")
 local BrushTool = {}
 BrushTool.__index = BrushTool
 
-local STATE_PAINTING = 1
-local STATE_ERASING = 2
-
 local VIRTUAL_CURSOR_UPDATES_PER_SECOND = 10
 
 function BrushTool.new(modelInfo: ModelInfo.ModelInfoClass, inputManager)
@@ -51,11 +49,13 @@ function BrushTool.new(modelInfo: ModelInfo.ModelInfoClass, inputManager)
 
 	self.currentBrushSize = 10
 	self.currentBrushColor = Color3.new(1, 1, 1)
+	self.currentBrushTransparency = 0
+	self.isReflectiveMode = false
 	self.currentEraserSize = 5
 
 	self.touchPoints = {}
 
-	self.currentState = STATE_PAINTING
+	self.currentState = Constants.STATE_PAINTING
 	self.currentBrush = nil
 
 	self.UseProjectionBrush = Utils.GetIsProjectionActivated()
@@ -72,17 +72,17 @@ function BrushTool.new(modelInfo: ModelInfo.ModelInfoClass, inputManager)
 end
 
 function BrushTool:SetStatePainting()
-	self.currentState = STATE_PAINTING
+	self.currentState = Constants.STATE_PAINTING
 end
 
 function BrushTool:SetStateErasing()
-	self.currentState = STATE_ERASING
+	self.currentState = Constants.STATE_ERASING
 end
 
 function BrushTool:OnBrushSizeChanged(newSize)
-	if self.currentState == STATE_PAINTING then
+	if self.currentState == Constants.STATE_PAINTING then
 		self.currentBrushSize = newSize
-	elseif self.currentState == STATE_ERASING then
+	elseif self.currentState == Constants.STATE_ERASING then
 		self.currentEraserSize = newSize
 	end
 end
@@ -100,7 +100,7 @@ function BrushTool:GetEraserSize()
 end
 
 function BrushTool:GetActiveSize()
-	if self.currentState == STATE_ERASING then
+	if self.currentState == Constants.STATE_ERASING then
 		return self.currentEraserSize
 	end
 
@@ -109,6 +109,15 @@ end
 
 function BrushTool:OnColorChanged(newColor)
 	self.currentBrushColor = newColor
+end
+
+-- `transparency` from the color picker is opacity (1 = solid). We keep it as `brush transparency` internally.
+function BrushTool:SetTransparency(colorPickerOpacity)
+	self.currentBrushTransparency = 1 - colorPickerOpacity
+end
+
+function BrushTool:SetIsReflective(isReflectiveMode)
+	self.isReflectiveMode = isReflectiveMode
 end
 
 function BrushTool:Enable()
@@ -141,6 +150,11 @@ end
 function BrushTool:CreateNewBrush(meshPart)
 	local textureInfo: TextureInfo.TextureInfoClass = self.modelInfo:GetTextureInfo()
 	local brushLayer, _wasCreated = textureInfo:GetOrCreateLayer(meshPart, Constants.BRUSH_LAYER)
+	local pbrMaps = {
+		roughnessMap = textureInfo:GetRoughnessMap(meshPart),
+		metalnessMap = textureInfo:GetMetalnessMap(meshPart),
+		normalMap = textureInfo:GetNormalMap(meshPart)
+	}
 
 	if self.currentBrush then
 		self.currentBrush:Destroy()
@@ -149,7 +163,7 @@ function BrushTool:CreateNewBrush(meshPart)
 	self.currentBrush = nil
 
 	if self.UseProjectionBrush then
-		self.currentBrush = ProjectionBrush.new(brushLayer, textureInfo)
+		self.currentBrush = ProjectionBrush.new(brushLayer, textureInfo, pbrMaps)
 		self.currentBrush:SetCommitBrushStrokeCallback(
 			function(projectionBrushActionMetadata: ImageEditActions.ProjectionBrushActionMetadata)
 				local brushAction =
@@ -182,17 +196,23 @@ function BrushTool:CreateNewBrush(meshPart)
 		end)
 	end
 
-	local currentColor = self.currentState == STATE_ERASING and Color3.new( 0, 0, 0) or self.currentBrushColor
-	local currentTransparency = self.currentState == STATE_ERASING and 1.0 or 0.0
-	local currentColorBlendType = self.currentState == STATE_ERASING and Enum.ImageCombineType.Multiply or Enum.ImageCombineType.BlendSourceOver
-	local currentAlphaBlendType = self.currentState == STATE_ERASING and Enum.ImageAlphaType.LockCanvasColor or Enum.ImageAlphaType.Default
+	local currentColor = self.currentState == Constants.STATE_ERASING and Color3.new( 0, 0, 0) or self.currentBrushColor
+	local currentTransparency = self.currentState == Constants.STATE_ERASING and 1.0 or 0.0
+	if self.UseProjectionBrush then
+		-- TODO CLI-202002: implement non-opaque transparency support for linear brush
+		currentTransparency = self.currentBrushTransparency
+	end
+	local currentColorBlendType = self.currentState == Constants.STATE_ERASING and Enum.ImageCombineType.Multiply or Enum.ImageCombineType.BlendSourceOver
+	local currentAlphaBlendType = self.currentState == Constants.STATE_ERASING and Enum.ImageAlphaType.LockCanvasColor or Enum.ImageAlphaType.Default
 	self.currentBrush:SetColor(currentColor)
+	self.currentBrush:SetIsReflective(self.isReflectiveMode)
 	self.currentBrush:SetSize(self:GetActiveSize())
 	self.currentBrush:SetTransparency(currentTransparency)
 	self.currentBrush:SetCurrentMeshPart(meshPart)
 	self.currentBrush:SetColorBlendType(currentColorBlendType)
 	self.currentBrush:SetAlphaBlendType(currentAlphaBlendType)
 	self.currentBrush:SetAllMeshPart(self.modelInfo:GetMeshInfo():GetEditableMeshMap())
+	self.currentBrush:SetState(self.currentState)
 end
 
 -- Returns: A) Did we hit the larger bounding box? B) The closest hit point along the raycast.
@@ -243,7 +263,8 @@ function BrushTool:SetupMeshDraw()
 			return
 		end
 
-		local didHitModel, raycastResult: MeshUtils.EditableMeshRaycastResult? = self:CastRayFromCamera(input.Position)
+		local didHitModel, raycastResult: MeshUtils.EditableMeshRaycastResult? =
+			self:CastRayFromCamera(InputUtils.getInputPosition(input))
 		if didHitModel == false or not raycastResult then
 			return
 		end
@@ -308,7 +329,8 @@ function BrushTool:SetupMeshDraw()
 			return
 		end
 
-		local isVirtualCursorMovement = Utils.isVirtualCursor(input.UserInputType) and input.KeyCode == Enum.KeyCode.Thumbstick1
+		local isVirtualCursorMovement = InputUtils.isVirtualCursor(input.UserInputType)
+			and input.KeyCode == Enum.KeyCode.Thumbstick1
 
 		if not isVirtualCursorMovement then
 			if gameProcessedEvent then
@@ -339,7 +361,7 @@ function BrushTool:SetupMeshDraw()
 			end
 		end
 
-		local inputPosition = input.Position
+		local inputPosition = InputUtils.getInputPosition(input)
 		if isVirtualCursorMovement then
 			local ticks = tick()
 			-- Throttle virtual cursor movement events to improve performance
@@ -347,13 +369,12 @@ function BrushTool:SetupMeshDraw()
 				return
 			end
 			self.lastVirtualCursorUpdate = ticks
-			inputPosition = UserInputService:GetMouseLocation()
 		end
 		self:HandleInputChanged(inputPosition, isVirtualCursorMovement)
 	end)
 
 	self.connections["inputEnded"] = UserInputService.InputEnded:Connect(function(input, _gameProcessedEvent)
-		local usingVirtualCursor = Utils.isVirtualCursor(input.UserInputType)
+		local usingVirtualCursor = InputUtils.isVirtualCursor(input.UserInputType)
 		if
 			input.UserInputType ~= Enum.UserInputType.MouseButton1
 			and input.UserInputType ~= Enum.UserInputType.Touch

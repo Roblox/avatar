@@ -45,6 +45,7 @@ local BlanksData: { BlankData } = {
 		creationType = Constants.CREATION_TYPES.Body,
 		enableWidgetMeshEditing = true,
 		enableStickerPatterning = true,
+		enableRegionalStickerPatterning = true,
 
 		sourceModel = Blanks:WaitForChild("RobotModel"),
 
@@ -60,6 +61,9 @@ local BlanksData: { BlankData } = {
 		creationType = Constants.CREATION_TYPES.Accessory,
 		avatarAssetType = Enum.AvatarAssetType.TShirtAccessory,
 		enableStickerPatterning = true,
+		enableRegionalStickerPatterning = true,
+		enableWidgetMeshEditing = true,
+		enableKitbashing = true,
 
 		sourceModel = Blanks:WaitForChild("TShirtModel"),
 
@@ -75,6 +79,8 @@ local BlanksData: { BlankData } = {
 		creationType = Constants.CREATION_TYPES.Accessory,
 		avatarAssetType = Enum.AvatarAssetType.Hat,
 		enableYRotation = true,
+		enableStickerPatterning = true,
+		enableRegionalStickerPatterning = true,
 		enableKitbashing = true,
 
 		sourceModel = Blanks:WaitForChild("HatModel"),
@@ -88,5 +94,38 @@ local BlanksData: { BlankData } = {
 		individualPartsNames = getIndividualPartNames(RegionMaps.HatIndividualParts),
 	},
 }
+
+local AVATAR_ASSET_TYPE_TO_ACCESSORY_TYPE = {
+	[Enum.AvatarAssetType.Hat] = Enum.AccessoryType.Hat,
+	[Enum.AvatarAssetType.TShirtAccessory] = Enum.AccessoryType.TShirt,
+	[Enum.AvatarAssetType.JacketAccessory] = Enum.AccessoryType.Jacket,
+	[Enum.AvatarAssetType.PantsAccessory] = Enum.AccessoryType.Pants,
+	[Enum.AvatarAssetType.ShirtAccessory] = Enum.AccessoryType.Shirt,
+	[Enum.AvatarAssetType.DressSkirtAccessory] = Enum.AccessoryType.DressSkirt,
+	[Enum.AvatarAssetType.SweaterAccessory] = Enum.AccessoryType.Sweater,
+	[Enum.AvatarAssetType.ShortsAccessory] = Enum.AccessoryType.Shorts,
+	[Enum.AvatarAssetType.BackAccessory] = Enum.AccessoryType.Back,
+	[Enum.AvatarAssetType.FaceAccessory] = Enum.AccessoryType.Face,
+	[Enum.AvatarAssetType.NeckAccessory] = Enum.AccessoryType.Neck,
+	[Enum.AvatarAssetType.WaistAccessory] = Enum.AccessoryType.Waist,
+	[Enum.AvatarAssetType.FrontAccessory] = Enum.AccessoryType.Front,
+	[Enum.AvatarAssetType.HairAccessory] = Enum.AccessoryType.Hair,
+}
+
+local function validateBlankData()
+	for _, blankData in BlanksData do
+		if blankData.creationType == Constants.CREATION_TYPES.Accessory then
+			local sourceModel: Model = blankData.sourceModel
+			local accessory = sourceModel:FindFirstChildWhichIsA("Accessory")
+			assert(accessory, "Accessory model " .. blankData.name .. " is missing an Accessory instance.")
+			assert(accessory.AccessoryType ~= Enum.AccessoryType.Unknown, "Accessory model " .. blankData.name .. " has AccessoryType set to Unknown.")
+
+			local expectedAccessoryType = AVATAR_ASSET_TYPE_TO_ACCESSORY_TYPE[blankData.avatarAssetType]
+			assert(accessory.AccessoryType == expectedAccessoryType, "Accessory model " .. blankData.name .. " has AccessoryType " .. tostring(accessory.AccessoryType) .. " but expected " .. tostring(expectedAccessoryType) .. ".")
+		end
+	end
+end
+
+validateBlankData()
 
 return BlanksData
