@@ -1109,8 +1109,8 @@ class validationTool:
             outerCage = cmds.ls("*_OuterCage")[0]
             innerCage = cmds.ls("*_InnerCage")[0]
             cloth = outerCage.split("_OuterCage")[0]
-            closestPolygonList_outer = self.checkClothIntersection('outer', 0.009, cloth, outerCage, innerCage)
-            closestPolygonList_inner = self.checkClothIntersection('inner', 0.009, cloth, outerCage, innerCage)
+            closestPolygonList_outer = self.checkClothIntersection('outer', 0.009, cloth, outerCage)
+            closestPolygonList_inner = self.checkClothIntersection('inner', 0.009, cloth, outerCage)
             closestPolygonLists = [closestPolygonList_outer, closestPolygonList_inner]
             isChecked = True
         elif len(outerCage) == 2:
