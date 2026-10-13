@@ -17,7 +17,12 @@ local TextButton = require(Components:WaitForChild("TextButton"))
 
 local Modal = {}
 
-function Modal.createComponentFrame(titleString: string, bodyString: string, buttonInfos: { TextButton.ButtonInfo })
+function Modal.createComponentFrame(
+	titleString: string,
+	bodyString: string,
+	buttonInfos: { TextButton.ButtonInfo },
+	middleContent: GuiObject?
+)
 	local modalFrame = Instance.new("Frame")
 	modalFrame.Name = "ModalFrame"
 
@@ -47,12 +52,18 @@ function Modal.createComponentFrame(titleString: string, bodyString: string, but
 	body.LayoutOrder = 2
 	StyleUtils.AddStyleTag(body, StyleConsts.tags.ModalBody)
 
+	-- Optional content between the text and the buttons (e.g. a "don't show again" toggle)
+	if middleContent then
+		middleContent.Parent = modalFrame
+		middleContent.LayoutOrder = 2
+	end
+
 	-- Buttons
 	local buttonFrame = Instance.new("Frame")
 	buttonFrame.Name = "ButtonContainer"
 	StyleUtils.AddStyleTag(buttonFrame, StyleConsts.tags.ButtonFrame)
 	buttonFrame.Parent = modalFrame
-	buttonFrame.LayoutOrder = 2
+	buttonFrame.LayoutOrder = 3
 
 	for i, buttonInfo in buttonInfos do
 		local button = TextButton.createComponentFrame(buttonInfo)

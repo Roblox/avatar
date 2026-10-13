@@ -19,27 +19,26 @@ local ProgressBar = require(Components:WaitForChild("ProgressBar"))
 local Panel = require(Components:WaitForChild("Panel"))
 local TileGrid = require(Components:WaitForChild("TileGrid"))
 
+local PIECE_VIEWPORT_OPTIONS = {
+	fitPadding = 1.2,
+}
+
 local KitbashToolUI = {}
 KitbashToolUI.__index = KitbashToolUI
 
 function KitbashToolUI:createKitbashGridComponent()
 	local tileInfos = {}
-
-	-- We expect kitbashData.pieces to contain a name and thumbnail, and
-	-- possibly minScale and maxScale.
-	for _, kitbashPiece: KitbashData.KitbashData in pairs(self.kitbashData.pieces) do
+	for _, kitbashPiece: KitbashData.KitbashData in self.kitbashData.GetPieces(self.isMakeup) do
 		local onClickCallback = function()
-			local minScale = kitbashPiece.minScale
-			local maxScale = kitbashPiece.maxScale
-			self.kitbashTool:SelectPiece(kitbashPiece.name, minScale, maxScale)
+			self.kitbashTool:SelectPiece(kitbashPiece.sourcePart, kitbashPiece.minScale, kitbashPiece.maxScale)
 			self:UpdateProgress()
 		end
 
-		local info = {
-			iconId = kitbashPiece.thumbnail,
+		table.insert(tileInfos, {
+			previewInstance = kitbashPiece.sourcePart,
+			viewportOptions = PIECE_VIEWPORT_OPTIONS,
 			callback = onClickCallback,
-		}
-		table.insert(tileInfos, info)
+		})
 	end
 
 	local grid = TileGrid.createComponentFrame(tileInfos)
@@ -48,21 +47,36 @@ function KitbashToolUI:createKitbashGridComponent()
 	return grid
 end
 
+function KitbashToolUI:SetKitbashTool(kitbashTool)
+	self.kitbashTool = kitbashTool
+	local editTarget = kitbashTool.modelInfo:GetServerEditTarget()
+	local isMakeup = Constants.MAKEUP_ACCESSORY_ASSET_TYPES[editTarget] == true
+	if self.isMakeup ~= isMakeup then
+		if self.grid then
+			self.grid:Destroy()
+			self.grid = nil
+		end
+		self.isMakeup = isMakeup
+		if self.panel and self.panel.Visible then
+			self:Open()
+		end
+	end
+	self:UpdateProgress()
+end
+
 function KitbashToolUI.new(onClosePanelCallback: () -> (), onDeleteCallback: () -> (), kitbashData, kitbashTool)
 	local self = {}
 	setmetatable(self, KitbashToolUI)
 
 	self.kitbashData = kitbashData
-	self.kitbashTool = kitbashTool
 
 	self.pieceCounter = ProgressBar.new(Constants.COUNTER_STRINGS.Kitbash, Constants.ATLAS_MAX_KITBASH_PIECES)
 	local pieceCounterFrame = self.pieceCounter.frame
 
 	local scrollingFrame = Instance.new("ScrollingFrame")
 	StyleUtils.AddStyleTag(scrollingFrame, StyleConsts.tags.ScrollFrame)
-
-	local grid = self:createKitbashGridComponent()
-	grid.Parent = scrollingFrame
+	self.scrollingFrame = scrollingFrame
+	self:SetKitbashTool(kitbashTool)
 
 	self.panel = Panel.createComponentFrame(
 		"Add-Ons",
@@ -82,12 +96,21 @@ function KitbashToolUI:UpdateProgress()
 end
 
 function KitbashToolUI:Open()
+	if not self.grid then
+		self.grid = self:createKitbashGridComponent()
+		self.grid.Parent = self.scrollingFrame
+		self.scrollingFrame.CanvasPosition = Vector2.zero
+	end
 	self.panel.Visible = true
 	self:UpdateProgress()
 end
 
 function KitbashToolUI:Close()
 	self.panel.Visible = false
+	if self.grid then
+		self.grid:Destroy()
+		self.grid = nil
+	end
 end
 
 return KitbashToolUI

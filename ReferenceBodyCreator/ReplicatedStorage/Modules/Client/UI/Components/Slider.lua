@@ -1,45 +1,45 @@
 --[[
 	Generic slider, used for sizing of paintbrush and spacing of stickers.
 ]]
-local GuiService = game:GetService("GuiService")
-
 local UI = script.Parent.Parent
 local Style = UI:WaitForChild("Style")
 local StyleConsts = require(Style:WaitForChild("StyleConsts"))
 local StyleUtils = require(Style:WaitForChild("StyleUtils"))
 
-local SliderInternal = {}
-SliderInternal.__index = SliderInternal
+local Slider = {}
+Slider.__index = Slider
 
-function SliderInternal:ConnectDragDetector()
+function Slider:ConnectDragDetector()
 	self.dragDetector.ResponseStyle = Enum.UIDragDetectorResponseStyle.CustomScale
 
-	local topLeftInset = GuiService:GetInsetArea(Enum.ScreenInsets.None).Min
-
+	-- Phone orientation can change the inset after this UI is created.
 	self.dragDetector.DragStart:Connect(function(inputPos)
+		local topLeftInset = StyleUtils.GetTopLeftInset()
 		local value = StyleUtils.GetMousePositionScaleOnComponent(self.sliderInput, inputPos + topLeftInset).X
 		self:UpdateValue(value, false --[[isFinalInput]])
 	end)
 	self.dragDetector.DragContinue:Connect(function(inputPos)
+		local topLeftInset = StyleUtils.GetTopLeftInset()
 		local value = StyleUtils.GetMousePositionScaleOnComponent(self.sliderInput, inputPos + topLeftInset).X
 		self:UpdateValue(value, false --[[isFinalInput]])
 	end)
 	self.dragDetector.DragEnd:Connect(function(inputPos)
+		local topLeftInset = StyleUtils.GetTopLeftInset()
 		local value = StyleUtils.GetMousePositionScaleOnComponent(self.sliderInput, inputPos + topLeftInset).X
 		self:UpdateValue(value, true --[[isFinalInput]])
 	end)
 end
 
-function SliderInternal:UpdateValue(value: number, isFinalInput: boolean)
+function Slider:UpdateValue(value: number, isFinalInput: boolean)
 	self.value = value
 
 	self.sliderBarProgress.Size = UDim2.fromScale(value, 1)
 	self.onValueChangedCallback(value, isFinalInput)
 end
 
-function SliderInternal.new(defaultValue: number, onValueChangedCallback: (number, boolean) -> ())
+function Slider.new(defaultValue: number, onValueChangedCallback: (number, boolean) -> ())
 	local self = {}
-	setmetatable(self, SliderInternal)
+	setmetatable(self, Slider)
 
 	self.value = defaultValue
 	self.onValueChangedCallback = onValueChangedCallback
@@ -81,11 +81,8 @@ function SliderInternal.new(defaultValue: number, onValueChangedCallback: (numbe
 	return self
 end
 
-local SliderPublic = {}
-function SliderPublic.createComponentFrame(defaultValue: number, onValueChangedCallback)
-	local Slider = SliderInternal.new(defaultValue, onValueChangedCallback)
-
-	return Slider.frame
+function Slider:GetFrame()
+	return self.frame
 end
 
-return SliderPublic
+return Slider

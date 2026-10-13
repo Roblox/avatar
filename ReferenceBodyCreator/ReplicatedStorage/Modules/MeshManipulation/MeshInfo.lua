@@ -9,13 +9,16 @@ local Constants = require(Config:WaitForChild("Constants"))
 local MeshManipulation = Modules:WaitForChild("MeshManipulation")
 local MeshUtils = require(MeshManipulation:WaitForChild("MeshUtils"))
 local MeshTypes = require(MeshManipulation:WaitForChild("MeshTypes"))
+local AccessoryShape = require(MeshManipulation:WaitForChild("AccessoryShape"))
 
 export type CageInfo = {
 	cageEditableMesh: EditableMesh,
 	wrapDeformer: WrapDeformer,
 
 	deformedEditableMeshDirty: boolean,
-	deformedEditableMesh: EditableMesh,
+	deformedEditableMesh: EditableMesh?,
+	deformedMeshRequest: {}?,
+	deformedMeshPending: boolean?,
 
 	-- Map of vertex id to initial vertex position
 	initialVertexPositionsMap: {
@@ -38,9 +41,15 @@ export type MeshInfo = {
 	-- If the mesh part is rigid (no wrap deformer), editableMesh will exist
 	editableMesh: EditableMesh?,
 
+	projectionTarget: WrapTextureTransfer?,
+	accessoryShape: AccessoryShape.AccessoryShape?,
+
 	initialCFrame: CFrame,
 
 	kitbashEditableMesh: EditableMesh?,
+	kitbashRevision: number?,
+	kitbashFacesBySlot: { [number]: { number } }?,
+	kitbashVerticesBySlot: { [number]: { [number]: Vector3 } }?,
 
 	-- Scale of the editable mesh from MeshPart size
 	scaleFactor: Vector3,
@@ -95,6 +104,17 @@ local function SetupBodyPart(meshPart: MeshPart, wrapTarget: WrapTarget): MeshIn
 	}
 
 	return meshInfo
+end
+
+local function SetupProjectionMeshPart(meshPart: MeshPart, wrapTextureTransfer: WrapTextureTransfer): MeshInfo
+	local scaleFactor = meshPart.MeshSize / meshPart.Size
+
+	return {
+		meshPart = meshPart,
+		projectionTarget = wrapTextureTransfer,
+		initialCFrame = meshPart.CFrame,
+		scaleFactor = scaleFactor,
+	}
 end
 
 -- When setting up a MeshPart to support kitbashing, we set up a
@@ -232,7 +252,10 @@ local function SetupModelMeshes(
 
 		local wrapTarget = descendant:FindFirstChildOfClass("WrapTarget")
 		local wrapLayer = descendant:FindFirstChildOfClass("WrapLayer")
-		if wrapTarget then
+		local projectionTransfer = descendant:FindFirstChild(Constants.MAKEUP_PROJECTION_TRANSFER_NAME, true)
+		if projectionTransfer and projectionTransfer:IsA("WrapTextureTransfer") then
+			newModelInfo[descendant] = SetupProjectionMeshPart(descendant, projectionTransfer)
+		elseif wrapTarget then
 			newModelInfo[descendant] = SetupBodyPart(descendant, wrapTarget)
 		elseif wrapLayer then
 			newModelInfo[descendant] = SetupLayeredClothingPart(descendant, wrapLayer, model, kitbashingEnabled)
@@ -703,16 +726,28 @@ function MeshInfo.new(model, blankData: BlanksData.BlankData)
 
 	self.modelMeshInfo = SetupModelMeshes(model, blankData.individualPartsNames, blankData.enableKitbashing)
 
-	self.widgetInfo = BuildWidgetInfo(model, blankData.meshEditControlGroups, self.modelMeshInfo)
+	if blankData.meshEditControlGroups then
+		self.widgetInfo = BuildWidgetInfo(model, blankData.meshEditControlGroups, self.modelMeshInfo)
+	else
+		self.widgetInfo = {}
+	end
 
 	return self
 end
 
 function MeshInfo:Destroy()
+	if self.destroyed then
+		return
+	end
+	self.destroyed = true
 	for _, meshInfo: MeshInfo in pairs(self.modelMeshInfo) do
 		if meshInfo.cageInfo then
 			meshInfo.cageInfo.cageEditableMesh:Destroy()
-			meshInfo.cageInfo.deformedEditableMesh:Destroy()
+			meshInfo.cageInfo.deformedMeshRequest = nil
+			if meshInfo.cageInfo.deformedEditableMesh then
+				meshInfo.cageInfo.deformedEditableMesh:Destroy()
+				meshInfo.cageInfo.deformedEditableMesh = nil
+			end
 		elseif meshInfo.editableMesh then
 			meshInfo.editableMesh:Destroy()
 		end
@@ -721,6 +756,26 @@ function MeshInfo:Destroy()
 			meshInfo.kitbashEditableMesh:Destroy()
 		end
 	end
+end
+
+-- Release disposable raycast/projection snapshots; keep mutable geometry alive.
+function MeshInfo:SuspendDeformedMeshes()
+	self.deformedMeshesSuspended = true
+	for _, meshInfo in self.modelMeshInfo do
+		local cage = meshInfo.cageInfo
+		if cage then
+			cage.deformedMeshRequest = nil
+			if cage.deformedEditableMesh then
+				cage.deformedEditableMesh:Destroy()
+				cage.deformedEditableMesh = nil
+			end
+		end
+	end
+end
+
+function MeshInfo:ResumeDeformedMeshes()
+	assert(not self.destroyed, "MeshInfo was destroyed")
+	self.deformedMeshesSuspended = false
 end
 
 function MeshInfo:GetModelMeshInfo(): ModelMeshInfo
@@ -735,14 +790,40 @@ function MeshInfo:GetDeformedEditableMesh(meshPart: MeshPart): EditableMesh
 
 	assert(meshInfo.cageInfo, "CageInfo must exist for deformable meshPart " .. meshPart.Name)
 
-	if meshInfo.cageInfo.deformedEditableMeshDirty then
-		meshInfo.cageInfo.deformedEditableMesh:Destroy()
-		meshInfo.cageInfo.deformedEditableMesh =
-			meshInfo.cageInfo.wrapDeformer:CreateEditableMeshAsync() :: EditableMesh
-		meshInfo.cageInfo.deformedEditableMeshDirty = false
+	local cage = meshInfo.cageInfo
+	-- Share one pending snapshot across readers.
+	while cage.deformedMeshPending and not self.destroyed and not self.deformedMeshesSuspended do
+		task.wait()
+	end
+	assert(not self.destroyed and not self.deformedMeshesSuspended, "Editing mesh is unavailable while suspended")
+	if cage.deformedEditableMeshDirty or not cage.deformedEditableMesh then
+		local request = {}
+		cage.deformedMeshRequest = request
+		cage.deformedMeshPending = true
+		if cage.deformedEditableMesh then
+			cage.deformedEditableMesh:Destroy()
+			cage.deformedEditableMesh = nil
+		end
+		local success, mesh = pcall(cage.wrapDeformer.CreateEditableMeshAsync, cage.wrapDeformer)
+		cage.deformedMeshPending = false
+		if not success then
+			error(mesh, 0)
+		end
+		if self.destroyed or cage.deformedMeshRequest ~= request then
+			if mesh then
+				mesh:Destroy()
+			end
+			if not self.destroyed and not self.deformedMeshesSuspended then
+				return self:GetDeformedEditableMesh(meshPart)
+			end
+			error("Editing mesh preparation was cancelled")
+		end
+		assert(mesh, "Could not rebuild editing mesh")
+		cage.deformedEditableMesh = mesh
+		cage.deformedEditableMeshDirty = false
 	end
 
-	return meshInfo.cageInfo.deformedEditableMesh
+	return cage.deformedEditableMesh
 end
 
 function MeshInfo:GetEditableMesh(meshPart: MeshPart): EditableMesh
@@ -757,6 +838,19 @@ function MeshInfo:GetEditableMesh(meshPart: MeshPart): EditableMesh
 		assert(meshInfo.editableMesh ~= nil, "EditableMesh or Deformed Mesh not found for meshPart " .. meshPart.Name)
 		return meshInfo.editableMesh
 	end
+end
+
+function MeshInfo:GetProjectionTarget(meshPart: MeshPart): MeshTypes.ProjectionTarget
+	local meshInfo: MeshInfo = self.modelMeshInfo[meshPart]
+	if not meshInfo then
+		error("MeshInfo not found for meshPart " .. meshPart.Name)
+	end
+
+	if meshInfo.projectionTarget then
+		return meshInfo.projectionTarget
+	end
+
+	return self:GetEditableMesh(meshPart)
 end
 
 function MeshInfo:HasMeshPartByName(meshPartName: string): boolean
@@ -787,9 +881,28 @@ function MeshInfo:MarkMeshPartDirty(meshPart: MeshPart)
 	assert(meshInfo.cageInfo, "CageInfo must exist for deformable mesh parts")
 
 	meshInfo.cageInfo.deformedEditableMeshDirty = true
+	meshInfo.cageInfo.deformedMeshRequest = nil
+end
+
+-- Topology edits need both a solver refresh and a new raycast/preview snapshot.
+function MeshInfo:RefreshKitbashMesh(meshPart: MeshPart)
+	local meshInfo = self.modelMeshInfo[meshPart]
+	meshInfo.kitbashRevision = (meshInfo.kitbashRevision or 0) + 1
+	if meshInfo.cageInfo then
+		local cageMesh = meshInfo.cageInfo.cageEditableMesh
+		local vertexId = cageMesh:GetVertices()[1]
+		if vertexId then
+			cageMesh:SetPosition(vertexId, cageMesh:GetPosition(vertexId))
+		end
+		self:MarkMeshPartDirty(meshPart)
+	end
 end
 
 function MeshInfo:UpdateDeformedEditableMeshes()
+	-- Suspended snapshots are rebuilt on demand after the context resumes.
+	if self.deformedMeshesSuspended then
+		return
+	end
 	for meshPart, meshInfo: MeshInfo in pairs(self.modelMeshInfo) do
 		if not meshInfo.cageInfo then
 			continue
@@ -814,8 +927,8 @@ function MeshInfo:GetEditableMeshMap(): MeshTypes.EditableMeshMap
 
 	for meshPart, meshInfo: MeshInfo in pairs(self.modelMeshInfo) do
 		if meshInfo.cageInfo then
-			editableMeshMap[meshPart] = meshInfo.cageInfo.deformedEditableMesh
-		else
+			editableMeshMap[meshPart] = self:GetDeformedEditableMesh(meshPart)
+		elseif not meshInfo.projectionTarget then
 			assert(
 				meshInfo.editableMesh ~= nil,
 				"EditableMesh or Deformed Mesh not found for meshPart " .. meshPart.Name
@@ -825,6 +938,16 @@ function MeshInfo:GetEditableMeshMap(): MeshTypes.EditableMeshMap
 	end
 
 	return editableMeshMap
+end
+
+function MeshInfo:GetProjectionTargetMap(): MeshTypes.ProjectionTargetMap
+	local projectionTargetMap: MeshTypes.ProjectionTargetMap = {}
+
+	for meshPart, _ in pairs(self.modelMeshInfo) do
+		projectionTargetMap[meshPart] = self:GetProjectionTarget(meshPart)
+	end
+
+	return projectionTargetMap
 end
 
 function MeshInfo:GetKitbashEditableMeshMap(): MeshTypes.EditableMeshMap

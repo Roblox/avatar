@@ -10,7 +10,7 @@ local StyleUtils = require(Style:WaitForChild("StyleUtils"))
 local TextButton = {}
 
 export type ButtonInfo = {
-	text: string,
+	text: string?,
 	callback: () -> (),
 }
 
@@ -18,7 +18,7 @@ function TextButton.createComponentFrame(buttonInfo: ButtonInfo)
 	local button = Instance.new("TextButton")
 	button.Name = "TextButton"
 
-	button.Text = buttonInfo.text
+	button.Text = buttonInfo.text or ""
 	button.Activated:Connect(buttonInfo.callback)
 
 	-- Most styling is done via StyleSheets -- see UI/Style.lua

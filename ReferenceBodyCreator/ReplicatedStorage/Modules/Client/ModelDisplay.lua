@@ -16,8 +16,6 @@ local MAX_OFFSET_Y = 1
 local MIN_OFFSET_Z = -3
 local MAX_OFFSET_Z = 2
 
--- TODO take out camera control into camera manager
-
 local ModelDisplay = {}
 ModelDisplay.__index = ModelDisplay
 
@@ -33,12 +31,20 @@ function ModelDisplay.new(modelInfo: ModelInfo.ModelInfoClass)
 	local isAccessory = self.creationType == Constants.CREATION_TYPES.Accessory
 	self.rotationX = if isAccessory then 0 else 180
 	self.rotationY = 0
+	self.cameraFacingYaw = 0
 	self.positionOffset = Vector3.new(0, 0, -2)
+
+	self.invertY = self.creationType == Constants.CREATION_TYPES.Makeup
 
 	Lighting.ClockTime = 9
 	Lighting.GeographicLatitude = 50
 
-	self.originalCFrame = modelInfo:GetInitialModelCFrame()
+	local initialCFrame = modelInfo:GetInitialModelCFrame()
+	if self.creationType == Constants.CREATION_TYPES.Makeup then
+		self.originalCFrame = CFrame.new(initialCFrame.Position)
+	else
+		self.originalCFrame = initialCFrame
+	end
 	self.localFocusPoint = Vector3.zero
 	self.globalFocusPoint = self.model.PrimaryPart.CFrame.Position
 	self.defaultCameraCFrame = workspace.CurrentCamera.CFrame
@@ -55,6 +61,75 @@ function ModelDisplay:SetRotationEnabled(enabled: boolean)
 	self.rotationEnabled = enabled
 end
 
+-- Temporarily routes orbit controls to another model.
+function ModelDisplay:SetTemporaryModel(modelInfo: ModelInfo.ModelInfoClass)
+	if self.savedModelState then
+		self:RestoreTemporaryModel()
+	end
+
+	self.savedModelState = {
+		model = self.model,
+		creationType = self.creationType,
+		enableYRotation = self.enableYRotation,
+		originalCFrame = self.originalCFrame,
+		localFocusPoint = self.localFocusPoint,
+		globalFocusPoint = self.globalFocusPoint,
+		rotationX = self.rotationX,
+		rotationY = self.rotationY,
+		cameraFacingYaw = self.cameraFacingYaw,
+		invertY = self.invertY,
+		positionOffset = self.positionOffset,
+		previewModels = self.previewModels,
+	}
+
+	self.model = modelInfo:GetModel()
+	self.creationType = modelInfo:GetCreationType()
+	self.enableYRotation = modelInfo.blankData.enableYRotation
+	-- Start facing forward, independent of the head's panel-facing yaw or a previous edit.
+	self.originalCFrame = CFrame.new(self.model.PrimaryPart.Position)
+	self.localFocusPoint = Vector3.zero
+	self.globalFocusPoint = self.model.PrimaryPart.Position
+	self.rotationX = 180
+	self.rotationY = 0
+	self.cameraFacingYaw = 0
+	self.invertY = self.creationType == Constants.CREATION_TYPES.Makeup
+	self.positionOffset = Vector3.zero
+	self.previewModels = nil
+	self:RotateModel()
+end
+
+function ModelDisplay:RestoreTemporaryModel()
+	local savedModelState = self.savedModelState
+	if not savedModelState then
+		return
+	end
+
+	for key, value in savedModelState do
+		self[key] = value
+	end
+	self.savedModelState = nil
+end
+
+function ModelDisplay:SetCameraFacingYaw(yawDegrees: number)
+	if self.creationType ~= Constants.CREATION_TYPES.Makeup then
+		return
+	end
+
+	self.cameraFacingYaw = yawDegrees
+	self:RotateModel()
+end
+
+function ModelDisplay:ResetCameraRotation()
+	if self.creationType ~= Constants.CREATION_TYPES.Makeup then
+		return
+	end
+
+	self.rotationX = 180
+	self.rotationY = 0
+	self.cameraFacingYaw = 0
+	self:RotateModel()
+end
+
 function ModelDisplay:TrackPreviewModels(previewModels)
 	self.previewModels = previewModels
 	-- Update preview models to match rotation
@@ -65,6 +140,7 @@ function ModelDisplay:ResetModel()
 	local isAccessory = self.creationType == Constants.CREATION_TYPES.Accessory
 	self.rotationX = if isAccessory then 0 else 180
 	self.rotationY = 0
+	self.cameraFacingYaw = 0
 	self.positionOffset = Vector3.new(0, 0, -2)
 	self:RotateModel()
 	self:UpdateModelCFrames()
@@ -118,7 +194,11 @@ function ModelDisplay:RotateModelFromPixels(deltaX, deltaY)
 
 	self.rotationX += deltaX * DEGREES_PER_PIXEL
 	if self.enableYRotation then
-		self.rotationY += deltaY * DEGREES_PER_PIXEL
+		if self.invertY then
+			self.rotationY -= deltaY * DEGREES_PER_PIXEL
+		else
+			self.rotationY += deltaY * DEGREES_PER_PIXEL
+		end
 	end
 	self:RotateModel()
 end
@@ -130,7 +210,11 @@ function ModelDisplay:RotateModelFromDegrees(degreesX, degreesY)
 
 	self.rotationX += degreesX
 	if self.enableYRotation then
-		self.rotationY += degreesY
+		if self.invertY then
+			self.rotationY -= degreesY
+		else
+			self.rotationY += degreesY
+		end
 	end
 	self:RotateModel()
 end
@@ -148,15 +232,16 @@ function ModelDisplay:RotateModel()
 	local currentCFrame = self.model.PrimaryPart.CFrame
 	local currentPos = currentCFrame.Position
 	local startOrientation = self.originalCFrame.Rotation
+	local displayRotationX = self.rotationX + self.cameraFacingYaw
 	local newCFrame = CFrame.new(currentPos.X, currentPos.Y, currentPos.Z)
 		* startOrientation
-		* CFrame.Angles(math.rad(self.rotationY), math.rad(self.rotationX), 0)
+		* CFrame.Angles(math.rad(self.rotationY), math.rad(displayRotationX), 0)
 	local worldSpaceOffset = (newCFrame:PointToWorldSpace(self.localFocusPoint) - newCFrame.Position)
 	local modelPos = self.globalFocusPoint - worldSpaceOffset
 
 	newCFrame = CFrame.new(modelPos.X, modelPos.Y, modelPos.Z)
 		* startOrientation
-		* CFrame.Angles(math.rad(self.rotationY), math.rad(self.rotationX), 0)
+		* CFrame.Angles(math.rad(self.rotationY), math.rad(displayRotationX), 0)
 	-- If we're currently focused on a point other than the center, move the model so that our focus point is where the center was
 	self.model:SetPrimaryPartCFrame(newCFrame + self.positionOffset)
 
@@ -176,12 +261,14 @@ end
 function ModelDisplay:OnExitedEditMode()
 	-- Revert model to start pos
 	self.model:SetPrimaryPartCFrame(self.originalCFrame)
+	self.cameraFacingYaw = 0
 	self.localFocusPoint = Vector3.zero
 	self.globalFocusPoint = self.model.PrimaryPart.CFrame.Position
 	self:RotateModel()
 end
 
 function ModelDisplay:Destroy()
+	self:RestoreTemporaryModel()
 	-- The model will be destroyed by the ModelInfo that owns it
 end
 

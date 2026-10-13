@@ -474,7 +474,6 @@ function ControlModule:OnLastInputTypeChanged(newLastInputType)
 	lastInputType = newLastInputType
 
 	if lastInputType == Enum.UserInputType.Touch then
-		-- TODO: Check if touch module already active
 		local touchModule, success = self:SelectTouchModule()
 		if success then
 			while not self.touchControlFrame do

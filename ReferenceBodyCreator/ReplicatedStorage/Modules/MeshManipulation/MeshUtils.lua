@@ -2,27 +2,32 @@ local AssetService = game:GetService("AssetService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")
+local EditableManager = require(Modules:WaitForChild("EditableManager"))
 
 local MeshManipulation = Modules:WaitForChild("MeshManipulation")
 local MeshTypes = require(MeshManipulation:WaitForChild("MeshTypes"))
 local Config = Modules:WaitForChild("Config")
 local Constants = require(Config:WaitForChild("Constants"))
+local KitbashData = require(Config:WaitForChild("KitbashData"))
 
 export type MergeKitbashParams = {
+	editableManager: EditableManager.EditableManagerClass,
 	targetMeshPart: MeshPart,
 	targetEditableMesh: EditableMesh,
 	targetScaleFactor: Vector3,
 
 	kitbashMeshId: string,
 	kitbashTextureId: string,
+	kitbashSourcePart: MeshPart?,
 
 	positionMarkerCFrame: CFrame,
 	scale: number,
-	rotation: CFrame,
+	rotation: number,
 
 	baseTextureLayer: EditableImage?,
 	atlasSlot: number?,
 	hasDrawnToAtlas: boolean,
+	useSkinningTransfer: boolean?,
 }
 
 local MeshUtils = {}
@@ -101,11 +106,18 @@ function MeshUtils.EditableMeshRaycastToCFrame(
 	return newCFrame
 end
 
+function MeshUtils.RaycastMeshPart(ray: Ray, meshPart: MeshPart): RaycastResult?
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterType = Enum.RaycastFilterType.Include
+	raycastParams.FilterDescendantsInstances = { meshPart }
+	return workspace:Raycast(ray.Origin, ray.Direction * Constants.MAX_PAINTING_DISTANCE, raycastParams)
+end
+
 export type EditableMeshRaycastResult = {
-	triangleId: number,
+	triangleId: number?,
 	point: Vector3,
-	barycentricCoordinate: Vector3,
-	editableMesh: EditableMesh,
+	barycentricCoordinate: Vector3?,
+	editableMesh: EditableMesh?,
 	meshPart: MeshPart,
 	scaleFactor: Vector3,
 }
@@ -174,88 +186,98 @@ function MeshUtils.RaycastAll(ray, editableMeshMap: MeshTypes.EditableMeshMap, s
 	return closestResult
 end
 
---  Combine the kitbash piece with the target MeshPart. This involves the following:
--- 1. Combining geometry via adding vertices/faces
--- 2. Updating our texture atlas with the kitbash piece texture
--- 3. Updating the piece's UVs to map to the atlas texture
-function MeshUtils.MergeKitbashPiece(params: MergeKitbashParams): { number }
-	local targetMeshPart = params.targetMeshPart
-	local targetEditableMesh = params.targetEditableMesh
-	local targetScaleFactor = params.targetScaleFactor
+-- On a miss, project onto a camera-facing plane and find the closest mesh point.
+function MeshUtils.RaycastOrFindNearestSurface(
+	ray: Ray,
+	editableMeshMap: MeshTypes.EditableMeshMap,
+	scaleFactorMap: MeshTypes.ScaleFactorMap,
+	planePoint: Vector3,
+	planeNormal: Vector3
+): EditableMeshRaycastResult?
+	local hit = MeshUtils.RaycastAll(ray, editableMeshMap, scaleFactorMap)
+	if hit then
+		return hit
+	end
 
-	-- Create EditableMesh from kitbash piece
-	local kitbashEditableMesh =
-		AssetService:CreateEditableMeshAsync(Content.fromUri(params.kitbashMeshId), { FixedSize = false })
-
-	local kitbashVertices = kitbashEditableMesh:GetVertices()
-	local kitbashFaces = kitbashEditableMesh:GetFaces()
-
-	-- Get root bone for skinning support
-	local rootBoneId = nil
-	local bones = targetEditableMesh:GetBones()
-	for _, boneId in bones do
-		if targetEditableMesh:GetBoneParent(boneId) == 0 then
-			rootBoneId = boneId
-			break
+	local denominator = ray.Direction:Dot(planeNormal)
+	if math.abs(denominator) < 1e-6 then
+		return nil
+	end
+	local distanceAlongRay = (planePoint - ray.Origin):Dot(planeNormal) / denominator
+	if distanceAlongRay < 0 then
+		return nil
+	end
+	local planeHit = ray.Origin + ray.Direction * distanceAlongRay
+	local closestDistance = math.huge
+	local closestResult = nil
+	for meshPart, editableMesh in editableMeshMap do
+		local scaleFactor = scaleFactorMap[meshPart]
+		local localPoint = meshPart.CFrame:PointToObjectSpace(planeHit) * scaleFactor
+		local triangleId, point, barycentricCoordinate = editableMesh:FindClosestPointOnSurface(localPoint)
+		if triangleId then
+			local worldPoint = meshPart.CFrame:PointToWorldSpace(point / scaleFactor)
+			local distance = (worldPoint - planeHit).Magnitude
+			if distance < closestDistance then
+				closestDistance = distance
+				closestResult = {
+					triangleId = triangleId,
+					point = point,
+					barycentricCoordinate = barycentricCoordinate,
+					editableMesh = editableMesh,
+					meshPart = meshPart,
+					scaleFactor = scaleFactor,
+				}
+			end
 		end
 	end
+	return closestResult
+end
 
-	-- If this piece has not previously been merged and drawn its texture to the
-	-- 2x2 texture atlas, draw the texture to the atlas
-	local hasKitbashTexture = params.kitbashTextureId ~= ""
-	if hasKitbashTexture and not params.hasDrawnToAtlas and params.atlasSlot and params.baseTextureLayer then
-		local atlasSize = params.baseTextureLayer.Size
-		local slotInfo = Constants.ATLAS_SLOTS[params.atlasSlot]
-
-		local kitbashTexture = AssetService:CreateEditableImageAsync(Content.fromUri(params.kitbashTextureId))
-
-		-- Calculate scale to fit slot
-		local slotSize = atlasSize.X / Constants.ATLAS_GRID_SIZE
-		local scaleX = slotSize / kitbashTexture.Size.X
-		local scaleY = slotSize / kitbashTexture.Size.Y
-
-		-- Draw to slot
-		params.baseTextureLayer:DrawImageTransformed(
-			Vector2.new(atlasSize.X * slotInfo.uCenter, atlasSize.Y * slotInfo.vCenter),
-			Vector2.new(scaleX, scaleY),
-			0,
-			kitbashTexture
-		)
-
-		kitbashTexture:Destroy()
+-- Brow/lash add-ons require RBX_Follower; other accessories can use the root.
+function MeshUtils.GetKitbashBoneId(editableMesh: EditableMesh, useSkinningTransfer: boolean?): number?
+	for _, boneId in editableMesh:GetBones() do
+		if useSkinningTransfer then
+			if editableMesh:GetBoneName(boneId) == "RBX_Follower" then
+				return boneId
+			end
+		elseif editableMesh:GetBoneParent(boneId) == 0 then
+			return boneId
+		end
 	end
+	assert(not useSkinningTransfer, "Brow/lash template is missing the RBX_Follower skinning-transfer bone")
+	return nil
+end
 
-	local rotationDegrees = params.rotation or 0
-	local rotationCFrame = CFrame.Angles(0, 0, math.rad(rotationDegrees))
-	local kitbashToWorld = params.positionMarkerCFrame * rotationCFrame
+local function MergeKitbashGeometry(params: MergeKitbashParams, kitbashEditableMesh, skinningBoneId, addedFaceIds)
+	local targetEditableMesh = params.targetEditableMesh
+	local kitbashToTarget = params.targetMeshPart.CFrame:ToObjectSpace(params.positionMarkerCFrame)
+		* CFrame.Angles(0, 0, math.rad(params.rotation or 0))
 	local vertexIdMap = {}
 	local uvIdMap = {}
-	local addedFaceIds = {}
-
-	-- Add vertex geometry to target mesh. Set the bones for skinning as well
-	for _, oldVertexId in kitbashVertices do
-		local localPos = kitbashEditableMesh:GetPosition(oldVertexId)
+	local sourcePositions = {}
+	local placementRotation = KitbashData.GetPlacementRotation(params.kitbashSourcePart)
+	local bones = if skinningBoneId then { skinningBoneId } else nil
+	local weights = { 1 }
+	for _, oldVertexId in kitbashEditableMesh:GetVertices() do
+		local localPos = placementRotation:VectorToWorldSpace(kitbashEditableMesh:GetPosition(oldVertexId))
 		local scaledPos = localPos * params.scale
-		local worldPos = kitbashToWorld:PointToWorldSpace(scaledPos)
-		local targetLocalPos = targetMeshPart.CFrame:PointToObjectSpace(worldPos)
-		local normalizedPos = targetLocalPos * targetScaleFactor
+		local normalizedPos = kitbashToTarget:PointToWorldSpace(scaledPos) * params.targetScaleFactor
 
 		local newVertexId = targetEditableMesh:AddVertex(normalizedPos)
 		vertexIdMap[oldVertexId] = newVertexId
+		sourcePositions[newVertexId] = localPos
 
-		if rootBoneId then
-			targetEditableMesh:SetVertexBones(newVertexId, { rootBoneId })
-			targetEditableMesh:SetVertexBoneWeights(newVertexId, { 1 })
+		if skinningBoneId then
+			targetEditableMesh:SetVertexBones(newVertexId, bones)
+			targetEditableMesh:SetVertexBoneWeights(newVertexId, weights)
 		end
 	end
 
-	-- Copy UVs from kitbash piece and remap them according to the texture atlas
-	if hasKitbashTexture and params.atlasSlot then
-		local kitbashUVs = kitbashEditableMesh:GetUVs()
+	if params.atlasSlot then
 		local slotInfo = Constants.ATLAS_SLOTS[params.atlasSlot]
 		local slotScale = 1.0 / Constants.ATLAS_GRID_SIZE
 
-		for _, oldUVId in kitbashUVs do
+		for _, oldUVId in kitbashEditableMesh:GetUVs() do
 			local uvCoord = kitbashEditableMesh:GetUV(oldUVId)
 			local remappedUV =
 				Vector2.new(slotInfo.uOffset + (uvCoord.X * slotScale), slotInfo.vOffset + (uvCoord.Y * slotScale))
@@ -265,39 +287,95 @@ function MeshUtils.MergeKitbashPiece(params: MergeKitbashParams): { number }
 		end
 	end
 
-	-- Copy faces from kitbash piece
-	for _, oldFaceId in kitbashFaces do
+	local faceUVs = table.create(3)
+	for _, oldFaceId in kitbashEditableMesh:GetFaces() do
 		local oldVertices = kitbashEditableMesh:GetFaceVertices(oldFaceId)
-		local oldUVs = kitbashEditableMesh:GetFaceUVs(oldFaceId)
-
-		local newVertices = {}
-		local newUVs = {}
-
-		for i, oldVertexId in oldVertices do
-			newVertices[i] = vertexIdMap[oldVertexId]
-		end
-
-		if hasKitbashTexture then
-			for i, oldUVId in oldUVs do
-				newUVs[i] = uvIdMap[oldUVId]
-			end
-		end
-
-		if #newVertices == 3 then
-			local newFaceId = targetEditableMesh:AddTriangle(newVertices[1], newVertices[2], newVertices[3])
-
-			if hasKitbashTexture and #newUVs == 3 then
-				targetEditableMesh:SetFaceUVs(newFaceId, newUVs)
-			end
-
+		if #oldVertices == 3 then
+			local newFaceId = targetEditableMesh:AddTriangle(
+				vertexIdMap[oldVertices[1]],
+				vertexIdMap[oldVertices[2]],
+				vertexIdMap[oldVertices[3]]
+			)
 			table.insert(addedFaceIds, newFaceId)
+			if params.atlasSlot then
+				local oldUVs = kitbashEditableMesh:GetFaceUVs(oldFaceId)
+				if #oldUVs == 3 then
+					for i, oldUVId in oldUVs do
+						faceUVs[i] = uvIdMap[oldUVId]
+					end
+					targetEditableMesh:SetFaceUVs(newFaceId, faceUVs)
+				end
+			end
+		end
+	end
+	return sourcePositions
+end
+
+function MeshUtils.MergeKitbashPiece(params: MergeKitbashParams): ({ number }, { [number]: Vector3 })
+	local targetEditableMesh = params.targetEditableMesh
+	local skinningBoneId = MeshUtils.GetKitbashBoneId(targetEditableMesh, params.useSkinningTransfer)
+	-- Release the source texture before allocating the source mesh.
+	if not params.hasDrawnToAtlas and params.atlasSlot and params.baseTextureLayer then
+		local atlasSize = params.baseTextureLayer.Size
+		local slotInfo = Constants.ATLAS_SLOTS[params.atlasSlot]
+		local slotSize = atlasSize / Constants.ATLAS_GRID_SIZE
+		local position = Vector2.new(atlasSize.X * slotInfo.uOffset, atlasSize.Y * slotInfo.vOffset)
+		if params.kitbashTextureId == "" then
+			params.baseTextureLayer:DrawRectangle(
+				position,
+				slotSize,
+				Color3.new(1, 1, 1),
+				0,
+				Enum.ImageCombineType.Overwrite
+			)
+		else
+			params.editableManager:UseTemporaryImage(Content.fromUri(params.kitbashTextureId), function(kitbashTexture)
+				params.baseTextureLayer:DrawImageTransformed(
+					position + slotSize / 2,
+					slotSize / kitbashTexture.Size,
+					0,
+					kitbashTexture,
+					{ CombineType = Enum.ImageCombineType.Overwrite }
+				)
+			end)
 		end
 	end
 
-	targetEditableMesh:RemoveUnused()
+	local kitbashEditableMesh =
+		AssetService:CreateEditableMeshAsync(Content.fromUri(params.kitbashMeshId), { FixedSize = true })
+	assert(kitbashEditableMesh, "Could not allocate kitbash mesh")
+	local addedFaceIds = {}
+	local success, sourcePositions =
+		pcall(MergeKitbashGeometry, params, kitbashEditableMesh, skinningBoneId, addedFaceIds)
 	kitbashEditableMesh:Destroy()
+	if not success then
+		for _, faceId in addedFaceIds do
+			targetEditableMesh:RemoveFace(faceId)
+		end
+	end
+	targetEditableMesh:RemoveUnused()
+	assert(success, sourcePositions)
+	local usedVertices = {}
+	for _, faceId in addedFaceIds do
+		for _, vertexId in targetEditableMesh:GetFaceVertices(faceId) do
+			usedVertices[vertexId] = sourcePositions[vertexId]
+		end
+	end
+	return addedFaceIds, usedVertices
+end
 
-	return addedFaceIds
+function MeshUtils.UpdateKitbashVertices(
+	mesh,
+	sourcePositions,
+	markerOffset: CFrame,
+	scale: number,
+	rotation: number,
+	scaleFactor: Vector3
+)
+	local transform = markerOffset * CFrame.Angles(0, 0, math.rad(rotation))
+	for vertexId, position in sourcePositions do
+		mesh:SetPosition(vertexId, transform:PointToWorldSpace(position * scale) * scaleFactor)
+	end
 end
 
 return MeshUtils

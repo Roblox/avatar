@@ -1,6 +1,6 @@
 --[[
 	Sets up a "local menu" at the top of the screen for general editing controls:
-	resetting edits, previewing accessories, and exiting the editor.
+	undoing and redoing, resetting edits, previewing accessories, and exiting.
 	Meant to emulate the style of the the Roblox top bar menu.
 ]]
 
@@ -17,9 +17,13 @@ local LocalMenuButtonGroup = require(Components:WaitForChild("LocalMenuButtonGro
 
 local LocalMenu = {}
 
+-- Returns the menu, a callback that re-evaluates any stateful button getters,
+-- and the button group frames.
 function LocalMenu.createComponentFrame(localMenuButtonGroupInfos: { LocalMenuButtonGroup.localMenuButtonGroupInfo })
 	local localMenu = Instance.new("Frame")
 	localMenu.Name = "LocalMenu"
+	local buttonGroupStateUpdaters = {}
+	local buttonGroups = {}
 
 	-- Most styling is done via StyleSheets -- see UI/Style.lua
 	if GuiService:IsTenFootInterface() then
@@ -29,12 +33,20 @@ function LocalMenu.createComponentFrame(localMenuButtonGroupInfos: { LocalMenuBu
 	end
 
 	for i, buttonGroupInfo in localMenuButtonGroupInfos do
-		local buttonGroup = LocalMenuButtonGroup.createComponentFrame(buttonGroupInfo)
+		local buttonGroup, updateButtonGroupStates = LocalMenuButtonGroup.createComponentFrame(buttonGroupInfo)
 		buttonGroup.LayoutOrder = i
 		buttonGroup.Parent = localMenu
+		table.insert(buttonGroups, buttonGroup)
+		table.insert(buttonGroupStateUpdaters, updateButtonGroupStates)
 	end
 
-	return localMenu
+	local updateButtonStates = function()
+		for _, updateButtonGroupStates in buttonGroupStateUpdaters do
+			updateButtonGroupStates()
+		end
+	end
+
+	return localMenu, updateButtonStates, buttonGroups
 end
 
 return LocalMenu

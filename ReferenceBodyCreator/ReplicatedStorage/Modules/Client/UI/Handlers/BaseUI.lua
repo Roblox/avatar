@@ -3,7 +3,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StarterGui = game:GetService("StarterGui")
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")
-local Utils = require(Modules:WaitForChild("Utils"))
+
+local TextureManipulation = Modules:WaitForChild("TextureManipulation")
+local GroupInfo = require(TextureManipulation:WaitForChild("GroupInfo")) -- For type definitions
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local BuyRemoteEvent = Remotes:WaitForChild("OnPlayerClickedBuy")
@@ -22,16 +24,14 @@ local Handlers = UI:WaitForChild("Handlers")
 local EditingUI = require(Handlers.EditingUI)
 local ResetEditsModalUI = require(Handlers.ResetEditsModalUI)
 local AccessoryAdjustmentModalUI = require(Handlers.AccessoryAdjustmentModalUI)
+local StampBakeModalUI = require(Handlers.StampBakeModalUI)
 local TopBarUI = require(Handlers.TopBarUI)
 local PreviewUI = require(Handlers.PreviewUI)
-
-local Components = UI:WaitForChild("Components")
-local TextButton = require(Components:WaitForChild("TextButton"))
 
 local BaseUI = {}
 BaseUI.__index = BaseUI
 
-function BaseUI.new(manager, modelInfo, fabricTool, stickerTool, brushTool, kitbashTool, previewTool)
+function BaseUI.new(manager, fabricTool, stickerTool, stampTool, brushTool, kitbashTool, previewTool, layerTool)
 	local self = {}
 	setmetatable(self, BaseUI)
 
@@ -65,18 +65,23 @@ function BaseUI.new(manager, modelInfo, fabricTool, stickerTool, brushTool, kitb
 	self.style = StyleSheet.new()
 	self.style:LinkGui(self.screenGui)
 
-	self.creationPrice = modelInfo:GetCreationPrice()
-
-	stickerTool:ConnectHandlesToStyle(self.style)
+	if stickerTool then
+		stickerTool:ConnectHandlesToStyle(self.style)
+	end
+	if stampTool then
+		stampTool:ConnectHandlesToStyle(self.style)
+	end
 	kitbashTool:ConnectHandlesToStyle(self.style)
 
 	self.TopBarUI = TopBarUI.new(self, manager)
 	self.ResetEditsModalUI = ResetEditsModalUI.new(self, manager)
 	self.AccessoryAdjustmentModalUI = AccessoryAdjustmentModalUI.new(self, manager)
-	self.EditingUI = EditingUI.new(self, manager, fabricTool, stickerTool, brushTool, kitbashTool)
+	if stampTool then
+		-- The stamp bake modal only exists during makeup, where the stamp tool is present.
+		self.StampBakeModalUI = StampBakeModalUI.new(self, manager)
+	end
+	self.EditingUI = EditingUI.new(self, manager, fabricTool, stickerTool, stampTool, brushTool, kitbashTool, layerTool)
 	self.PreviewUI = PreviewUI.new(self, manager, previewTool)
-
-	self:CreateBuyButton()
 
 	return self
 end
@@ -86,27 +91,11 @@ function BaseUI:OnClickedBuyButton()
 	self.manager:Quit()
 end
 
-function BaseUI:CreateBuyButton()
-	self.buyButton = TextButton.createComponentFrame({
-		text = Utils.getBuyButtonString(self.creationPrice),
-		callback = function()
-			self:OnClickedBuyButton()
-		end,
-	})
-	self.buyButton.Name = "BuyButton"
-
-	self.buyButton.Parent = self.screenGui
-	StyleUtils.AddStyleTag(self.buyButton, StyleConsts.tags.BuyButton)
-	StyleUtils.AddStyleTag(self.buyButton, StyleConsts.tags.EmphasisButton)
-end
-
 function BaseUI:HideCoreUIBehindPanel()
-	StyleUtils.AddStyleTag(self.buyButton, StyleConsts.tags.CoreUIWithOpenPanel)
 	self.TopBarUI:HideBehindPanel()
 end
 
 function BaseUI:UnhideCoreUIBehindPanel()
-	StyleUtils.RemoveStyleTag(self.buyButton, StyleConsts.tags.CoreUIWithOpenPanel)
 	self.TopBarUI:UnhideBehindPanel()
 end
 
@@ -129,11 +118,18 @@ function BaseUI:ReturnToEditor()
 	self.EditingUI:Show()
 end
 
+function BaseUI:SelectLayer(targetLayerInfo: GroupInfo.TargetLayerInfo)
+	self.EditingUI:SelectLayer(targetLayerInfo)
+end
+
 function BaseUI:Destroy()
 	self.screenGui:Destroy()
 
 	self.ResetEditsModalUI:Destroy()
 	self.AccessoryAdjustmentModalUI:Destroy()
+	if self.StampBakeModalUI then
+		self.StampBakeModalUI:Destroy()
+	end
 	self.TopBarUI:Destroy()
 	self.EditingUI:Destroy()
 	self.PreviewUI:Destroy()

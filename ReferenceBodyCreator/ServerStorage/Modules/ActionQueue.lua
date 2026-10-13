@@ -4,6 +4,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Modules = ReplicatedStorage:WaitForChild("Modules")
 
 local Actions = require(Modules:WaitForChild("Actions"))
+local ActionUtils = require(Modules:WaitForChild("ActionUtils"))
+local HistoryTool = require(Modules:WaitForChild("Client"):WaitForChild("Tools"):WaitForChild("HistoryTool"))
+local HistoryEditActions =
+	require(Modules:WaitForChild("Client"):WaitForChild("Tools"):WaitForChild("HistoryEditActions"))
 
 local ActionQueue = {}
 ActionQueue.__index = ActionQueue
@@ -11,20 +15,22 @@ ActionQueue.__index = ActionQueue
 function ActionQueue.new(player: Player)
 	local self = setmetatable({}, ActionQueue)
 
-	self.queue = {} :: { Actions.Action }
+	self.queue = {} :: { ActionUtils.Action }
 	self.actionInProgress = false
+	self.destroyed = false
 
 	self.gotTargetModelInfo = Instance.new("BindableEvent")
 	self.processingFinished = Instance.new("BindableEvent")
 
 	self.targetModelInfo = nil
+	self.historyTool = nil
 	self.player = player
 
 	return self
 end
 
 function ActionQueue:ProcessQueue()
-	if self.actionInProgress then
+	if self.destroyed or self.actionInProgress then
 		return
 	end
 
@@ -41,8 +47,8 @@ function ActionQueue:ProcessQueue()
 	while #self.queue > 0 do
 		local action = self.queue[1]
 		table.remove(self.queue, 1)
-
-		if not Actions.IsValidAction(self.targetModelInfo, action) then
+		assert(self.historyTool)
+		if not Actions.IsValidAction(self.targetModelInfo, action, nil, self.historyTool) then
 			warn(
 				"Invalid action found in queue for player "
 					.. self.player.Name
@@ -53,7 +59,7 @@ function ActionQueue:ProcessQueue()
 			continue
 		end
 
-		Actions.ExecuteAction(self.targetModelInfo, action)
+		Actions.ExecuteAction(self.targetModelInfo, action, nil, self.historyTool)
 	end
 
 	self.processingFinished:Fire()
@@ -63,6 +69,7 @@ end
 
 function ActionQueue:SetTargetModelInfo(targetModelInfo)
 	self.targetModelInfo = targetModelInfo
+	self.historyTool = HistoryTool.new(targetModelInfo)
 	self.gotTargetModelInfo:Fire()
 
 	self:ProcessQueue()
@@ -72,7 +79,10 @@ function ActionQueue:GetPlayerModelInfo()
 	return self.targetModelInfo
 end
 
-function ActionQueue:AddAction(action: Actions.Action)
+function ActionQueue:AddAction(action: ActionUtils.Action)
+	if self.destroyed then
+		return
+	end
 	table.insert(self.queue, action)
 
 	self:ProcessQueue()
@@ -80,6 +90,9 @@ end
 
 -- Flush the queue and wait for all actions to finish processing
 function ActionQueue:FlushQueue()
+	if self.destroyed then
+		return
+	end
 	if not self.targetModelInfo then
 		self.gotTargetModelInfo.Event:Wait()
 	end
@@ -91,6 +104,21 @@ function ActionQueue:FlushQueue()
 	if #self.queue > 0 then
 		self:ProcessQueue()
 	end
+end
+
+function ActionQueue:Destroy()
+	if self.destroyed then
+		return
+	end
+	self.destroyed = true
+	table.clear(self.queue)
+	if self.actionInProgress then
+		self.processingFinished.Event:Wait()
+	end
+	self.targetModelInfo = nil
+	self.historyTool = nil
+	self.gotTargetModelInfo:Destroy()
+	self.processingFinished:Destroy()
 end
 
 return ActionQueue

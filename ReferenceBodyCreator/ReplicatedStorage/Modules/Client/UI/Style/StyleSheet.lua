@@ -4,6 +4,7 @@
 	Relies on StyleRules and StyleThemes for defining UI properties.
 ]]
 
+local GuiService = game:GetService("GuiService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local UI = script.Parent.Parent
@@ -57,15 +58,24 @@ function Style:LinkGui(screenGui: ScreenGui)
 	styleLink.Parent = screenGui
 	styleLink.StyleSheet = self.coreSheet
 
-	local screenSizeChangedSignal = screenGui:GetPropertyChangedSignal("AbsoluteSize")
-	screenSizeChangedSignal:Connect(function()
+	local function updateTheme()
 		self:UpdateTheme(screenGui)
-	end)
-	self:UpdateTheme(screenGui)
+	end
+	screenGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateTheme)
+	screenGui:GetPropertyChangedSignal("AbsolutePosition"):Connect(updateTheme)
+	updateTheme()
 end
 
 function Style:UpdateTheme(screenGui: ScreenGui)
 	if StyleUtils.GetIsMobile(screenGui) then
+		-- The panel reaches the full screen edge; the top bar ends at its safe-area edge.
+		local screenRight = GuiService:GetInsetArea(Enum.ScreenInsets.None).Max.X
+		local topbarRight = GuiService:GetInsetArea(Enum.ScreenInsets.TopbarSafeInsets).Max.X
+		local positionToken = StyleThemes.themeTokens.LocalMenuPositionWithOpenPanel
+		self.phoneTheme:SetAttribute(
+			positionToken,
+			StyleThemes.mobileThemeTokens[positionToken] + UDim2.fromOffset(screenRight - topbarRight, 0)
+		)
 		self.themeDerive.StyleSheet = self.phoneTheme
 	else
 		self.themeDerive.StyleSheet = self.desktopTheme

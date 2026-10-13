@@ -239,7 +239,6 @@ function OrbitalCamera:Update(dt: number): (CFrame, CFrame)
 	if subjectPosition and player and camera then
 
 		-- Process any dollying being done by gamepad
-		-- TODO: Move this
 		if self.gamepadDollySpeedMultiplier ~= 1 then
 			self:SetCameraToSubjectDistance(self.currentSubjectDistance * self.gamepadDollySpeedMultiplier)
 		end

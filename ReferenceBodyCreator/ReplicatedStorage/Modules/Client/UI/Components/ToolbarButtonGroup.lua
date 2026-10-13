@@ -18,7 +18,7 @@ local StyleUtils = require(Style:WaitForChild("StyleUtils"))
 
 local Components = UI:WaitForChild("Components")
 local Divider = require(Components:WaitForChild("ToolbarGroupDivider"))
-local IconButton = require(Components:WaitForChild("IconButton"))
+local TwoStateIconButton = require(Components:WaitForChild("TwoStateIconButton"))
 
 export type ToolbarButtonGroupInfo = {
 	{
@@ -49,16 +49,22 @@ function ToolbarButtonGroup:GetFrame()
 	return self.frame
 end
 
+-- Enables or disables every button in the group. Disabled buttons stay visible but
+-- faded and non-interactive.
+function ToolbarButtonGroup:SetEnabled(isEnabled: boolean)
+	for _, button in self.childButtons do
+		button:SetEnabled(isEnabled)
+	end
+end
+
 function ToolbarButtonGroup:ChangeSelection(i: number)
 	if self.currentSelection and self.currentSelection ~= i then
 		-- Deselect current and set icon to muted version, if it exists
-		local currentButtonIcon = self.childButtonIcons[self.currentSelection]
-		if currentButtonIcon.mutedIconId then
-			currentButtonIcon.imageLabel.Image = currentButtonIcon.mutedIconId
-		end
+		local currentButton = self.childButtons[self.currentSelection]
+		currentButton:SetActive(false)
 
-		local newButtonIcon = if i then self.childButtonIcons[i] else self.childButtonIcons[1]
-		newButtonIcon.imageLabel.Image = newButtonIcon.iconId
+		local newButton = if i then self.childButtons[i] else self.childButtons[1]
+		newButton:SetActive(true)
 	end
 	self.currentSelection = i
 end
@@ -74,13 +80,16 @@ function ToolbarButtonGroup.new(toolbarButtonGroupInfo: ToolbarButtonGroupInfo, 
 	-- Primary button selected by default
 	self.currentSelection = nil
 	self.children = {}
-	self.childButtonIcons = {
-		--[[imageLabel, iconId, mutedIconId?]]
-	}
+	self.childButtons = {}
 
 	-- Create buttons from button stack and add dividers
 	for i, buttonInfo in toolbarButtonGroupInfo do
 		local button
+
+		-- If no muted icon is specified, use the regular icon for both states
+		if not buttonInfo.mutedIconId then
+			buttonInfo.mutedIconId = buttonInfo.iconId
+		end
 
 		local buttonCallback = function()
 			if self.currentSelection == i then
@@ -99,23 +108,23 @@ function ToolbarButtonGroup.new(toolbarButtonGroupInfo: ToolbarButtonGroupInfo, 
 				end
 				buttonCallback()
 			end
-			button = IconButton.createComponentFrame(buttonInfo.iconId, buttonFunc)
+			button = TwoStateIconButton.new(buttonInfo.iconId, buttonInfo.mutedIconId,buttonFunc)
+			-- Set first button to active by default
+			button:SetActive(true)
+			table.insert(self.childButtons, button)
 		else
 			-- Insert divider frame
 			local divider = Divider.createComponentFrame()
 			table.insert(self.children, divider)
 
 			-- Create and insert button, muted by default if possible
-			local icon = if buttonInfo.mutedIconId then buttonInfo.mutedIconId else buttonInfo.iconId
-			button = IconButton.createComponentFrame(icon, buttonCallback)
+			button = TwoStateIconButton.new(buttonInfo.iconId, buttonInfo.mutedIconId,buttonCallback)
+			button:SetActive(false)
+			table.insert(self.childButtons, button)
 		end
 
-		table.insert(self.children, button)
-		table.insert(
-			self.childButtonIcons,
-			{ imageLabel = button.ImageLabel, iconId = buttonInfo.iconId, mutedIconId = buttonInfo.mutedIconId }
-		)
-		StyleUtils.AddStyleTag(button, StyleConsts.tags.ToolbarButton)
+		table.insert(self.children, button:GetFrame())
+		StyleUtils.AddStyleTag(button:GetFrame(), StyleConsts.tags.ToolbarButton)
 	end
 
 	-- Parent all children

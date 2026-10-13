@@ -180,6 +180,43 @@ local function equipLayeredAccessory(character: Model, layeredAccessory: Accesso
 	layeredAccessory.Parent = character
 end
 
+function AccessoryUtils.SetDefaultWrapLayerOrder(root: Instance, category: string)
+	for _, descendant in root:GetDescendants() do
+		if descendant:IsA("WrapLayer") then
+			descendant.Order = if category == "Eyelashes" then 2 else 1
+			if category == "Eyebrows" or category == "Eyelashes" then
+				descendant.AutoSkin = Enum.WrapLayerAutoSkin.EnabledOverride
+			end
+		end
+	end
+end
+
+-- Equips a layered accessory onto a single WrapTarget (e.g. eyebrows on the makeup head).
+function AccessoryUtils.EquipLayeredAccessoryOntoWrapTarget(model: Model, accessory: Accessory)
+	local wrapTarget = model:FindFirstChildWhichIsA("WrapTarget", true)
+	assert(wrapTarget, "Model has no WrapTarget to wrap the accessory onto.")
+	local targetPart = wrapTarget.Parent
+	assert(targetPart and targetPart:IsA("BasePart"), "WrapTarget must be parented to a BasePart.")
+
+	local handle = accessory:FindFirstChildWhichIsA("BasePart", true)
+	assert(handle, "Accessory " .. accessory.Name .. " has no BasePart handle.")
+	local wrapLayer = handle:FindFirstChildWhichIsA("WrapLayer", true)
+	assert(wrapLayer, "Accessory " .. accessory.Name .. " has no WrapLayer; it can't deform via layered clothing.")
+
+	local worldAFromWrap = wrapTarget.ImportOriginWorld
+	local wrapFromWorldB = wrapLayer.ImportOriginWorld:Inverse()
+	local worldAFromWorldB = worldAFromWrap * wrapFromWorldB
+	handle.CFrame = worldAFromWorldB * wrapLayer.Parent.CFrame
+
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = handle
+	weld.Part1 = targetPart
+	weld.Parent = handle
+
+	handle.Anchored = false
+	accessory.Parent = model
+end
+
 function AccessoryUtils.ReapplyLayeredClothing(model: Model)
 	for _, descendant in model:GetDescendants() do
 		if descendant:IsA("WrapLayer") then
