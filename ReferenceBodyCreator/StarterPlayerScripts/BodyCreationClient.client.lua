@@ -10,6 +10,7 @@ local UserInputService = game:GetService("UserInputService")
 local Modules = ReplicatedStorage:WaitForChild("Modules")
 
 local ResolutionManager = require(Modules:WaitForChild("ResolutionManager"))
+local EditableManager = require(Modules:WaitForChild("EditableManager"))
 
 local Client = Modules:WaitForChild("Client")
 local UI = Client:WaitForChild("UI")
@@ -35,22 +36,32 @@ local Utils = require(Modules:WaitForChild("Utils"))
 local Config = Modules:WaitForChild("Config")
 local Constants = require(Config:WaitForChild("Constants"))
 local BlanksData = require(Config:WaitForChild("BlanksData"))
+local MakeupHeads = require(Config:WaitForChild("MakeupHeads"))
 
 local Actions = require(Modules:WaitForChild("Actions"))
+local ActionUtils = require(Modules:WaitForChild("ActionUtils"))
 
 local MeshManipulation = Modules:WaitForChild("MeshManipulation")
 local AccessoryUtils = require(MeshManipulation:WaitForChild("AccessoryUtils"))
 local AttachmentUtils = require(MeshManipulation:WaitForChild("AttachmentUtils"))
+local MakeupProjectionUtils = require(MeshManipulation:WaitForChild("MakeupProjectionUtils"))
 local MeshInfo = require(MeshManipulation:WaitForChild("MeshInfo"))
 local MeshEditActions = require(MeshManipulation:WaitForChild("MeshEditActions"))
+
+local TextureManipulation = Modules:WaitForChild("TextureManipulation")
+local GroupInfo = require(TextureManipulation:WaitForChild("GroupInfo"))
 
 -- Tools
 local Tools = Client:WaitForChild("Tools")
 local FabricTool = require(Tools:WaitForChild("FabricTool"))
 local StickerTool = require(Tools:WaitForChild("StickerTool"))
+local StampTool = require(Tools:WaitForChild("StampTool"))
 local BrushTool = require(Tools:WaitForChild("BrushTool"))
 local KitbashTool = require(Tools:WaitForChild("KitbashTool"))
 local PreviewTool = require(Tools:WaitForChild("PreviewTool"))
+local PreviewAccessoryTool = require(Tools:WaitForChild("PreviewAccessoryTool"))
+local LayerTool = require(Tools:WaitForChild("LayerTool"))
+local HistoryTool = require(Tools:WaitForChild("HistoryTool"))
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 
@@ -110,6 +121,9 @@ local function SetupClientModel(blankData: BlanksData.BlankData): Model
 	loadingScreen.Visible = true
 
 	local newModel: Model = blankData.sourceModel:Clone()
+	if blankData.creationType == Constants.CREATION_TYPES.Makeup then
+		MakeupProjectionUtils.SetupHead(newModel)
+	end
 	newModel.Parent = workspace
 
 	if blankData.creationType == Constants.CREATION_TYPES.Body then
@@ -125,7 +139,7 @@ local function GetPlayerControls()
 	return playerModule:GetControls()
 end
 
-function CreationManager.new(modelInfo: ModelInfo.ModelInfoClass)
+function CreationManager.new(modelInfo: ModelInfo.ModelInfoClass, editableManager)
 	local self = {}
 	setmetatable(self, CreationManager)
 
@@ -134,36 +148,65 @@ function CreationManager.new(modelInfo: ModelInfo.ModelInfoClass)
 	self.cameraResetPos = workspace.CurrentCamera.CFrame.Position
 
 	self.modelInfo = modelInfo
+	self.editableManager = editableManager
+	self.historyTool = HistoryTool.new(modelInfo)
 
 	-- Setup camera controls
-	self.cameraManager = CameraManager.new(modelInfo)
 	self.modelDisplay = ModelDisplay.new(modelInfo)
+	self.cameraManager = CameraManager.new(modelInfo)
 	self.inputManager = InputManager.new(self.cameraManager, self.modelDisplay)
 
 	-- Hide loading screen now that model + textures are finished loading
 	local loadingScreen = getLoadingScreen()
 	loadingScreen.Visible = false
 
-	self.brushTool = BrushTool.new(self.modelInfo, self.inputManager)
+	self.brushTool = BrushTool.new(self.modelInfo, self.inputManager, self.historyTool)
 
-	self.fabricTool = FabricTool.new(self.modelInfo)
+	if modelInfo:GetCreationType() ~= Constants.CREATION_TYPES.Makeup then
+		self.fabricTool = FabricTool.new(self.modelInfo)
+		self.stickerTool = StickerTool.new(self.modelInfo, self.inputManager)
+	end
 
-	self.stickerTool = StickerTool.new(self.modelInfo, self.inputManager)
-
-	self.kitbashTool = KitbashTool.new(self.modelInfo, self.inputManager, self.modelDisplay)
+	self.kitbashTool = KitbashTool.new(self.modelInfo, self.inputManager, self.modelDisplay, self.historyTool)
 
 	if modelInfo:GetCreationType() == Constants.CREATION_TYPES.Accessory then
 		self.previewTool = PreviewTool.new(self.modelInfo, self.cameraManager, self.modelDisplay)
 	end
 
+	if modelInfo:GetCreationType() == Constants.CREATION_TYPES.Makeup then
+		self.stampTool = StampTool.new(self.modelInfo, self.inputManager, self.historyTool, function()
+			self.baseUI.StampBakeModalUI:Open()
+		end)
+		self.layerTool = LayerTool.new(self.modelInfo, self.modelInfo:GetMeshParts()[1].Name, self.historyTool)
+		self.historyTool:setSelectLayerCallback(function(layerInfo: GroupInfo.TargetLayerInfo)
+			self.baseUI:SelectLayer(layerInfo)
+		end)
+	end
+
+	if modelInfo:GetCreationType() == Constants.CREATION_TYPES.Makeup then
+		self.accessoryTextureTools = {}
+		self.previewAccessoryTool = PreviewAccessoryTool.new(self.modelInfo, self.editableManager, function(category)
+			self:DestroyAccessoryTextureTools(category)
+		end)
+		if self.previewAccessoryTool then
+			self.previewAccessoryTool.beforeContextSwitch = function()
+				local tools = self.activeAccessoryTextureTools or self
+				tools.brushTool:Disable()
+				tools.stampTool:Disable()
+				tools.kitbashTool:Disable()
+			end
+		end
+	end
+
 	self.baseUI = BaseUI.new(
 		self,
-		modelInfo,
 		self.fabricTool,
 		self.stickerTool,
+		self.stampTool,
 		self.brushTool,
 		self.kitbashTool,
-		self.previewTool
+		self.previewTool,
+		self.layerTool
 	)
 
 	self.meshEditingWidgetManager =
@@ -191,10 +234,25 @@ function CreationManager.new(modelInfo: ModelInfo.ModelInfoClass)
 	end
 	self.isMobile = StyleUtils.GetIsMobile(screenGui)
 
+	if modelInfo:GetCreationType() == Constants.CREATION_TYPES.Makeup then
+		-- Apply the player's head once per model, preserving their choice when reopening the editor.
+		if not modelInfo.makeupHeadInitialized then
+			modelInfo.makeupHeadInitialized = true
+			if MakeupHeads.GetSourceHead(MakeupHeads.PlayerId, nil, LocalPlayer.Character) then
+				self.baseUI.EditingUI.makeupPreviewToolUI:SwapHead(MakeupHeads.PlayerId, true --[[isConfirmed]])
+				if self.baseUI.EditingUI.makeupPreviewToolUI.destroyed then
+					return self
+				end
+			end
+		end
+		self.baseUI.EditingUI:OpenLayerPanel()
+	end
+
 	return self
 end
 
 local lastEditedModelInfo = nil
+local lastEditableManager = nil
 
 local function DownresCreationWrapper(creationFunction)
 	-- Reset resolution at the start of each creation attempt
@@ -255,6 +313,10 @@ local function DestroyLastModel()
 		ResetCompleteEvent.OnClientEvent:Wait() -- Wait for server confirmation
 		lastEditedModelInfo:Destroy()
 		lastEditedModelInfo = nil
+	end
+	if lastEditableManager then
+		lastEditableManager:Destroy()
+		lastEditableManager = nil
 	end
 end
 
@@ -331,6 +393,15 @@ local function PreviewAvatarLocally(modelInfo: ModelInfo.ModelInfoClass)
 end
 
 function CreationManager:Quit()
+	self:FinishAccessoryTextureEditing()
+	if self.previewAccessoryTool then
+		local contextReady = self.previewAccessoryTool:SetEditingCategory(nil)
+		if not contextReady then
+			-- Reset and purchase callers still proceed, so a failed restore must not leave the editor alive.
+			warn("Could not restore makeup editing images while quitting; continuing editor cleanup.")
+		end
+	end
+
 	if DEBUG_PREVIEW_AVATAR_LOCALLY then
 		PreviewAvatarLocally(self.modelInfo)
 	end
@@ -340,10 +411,20 @@ function CreationManager:Quit()
 	self.cameraManager:Destroy()
 
 	self.brushTool:Destroy()
-	self.fabricTool:Destroy()
-	self.stickerTool:Destroy()
+	if self.fabricTool then
+		self.fabricTool:Destroy()
+	end
+	if self.stickerTool then
+		self.stickerTool:Destroy()
+	end
+	if self.stampTool then
+		self.stampTool:Destroy()
+	end
 	if self.previewTool then
 		self.previewTool:Destroy()
+	end
+	if self.previewAccessoryTool then
+		self.previewAccessoryTool:Destroy()
 	end
 
 	self.meshEditingWidgetManager:Destroy()
@@ -389,12 +470,176 @@ function CreationManager:ExitEditMode()
 	self.modelDisplay:OnExitedEditMode()
 end
 
+function CreationManager:Undo()
+	if self.modelInfo:GetMakeupHeadSwapInProgress() then
+		return
+	end
+	local layerTool = self.baseUI.EditingUI.layerTool
+	local historyTool = if layerTool then layerTool.historyTool else self.historyTool
+	if historyTool:getUndoCount() > 0 then
+		historyTool:undo()
+		local undoAction = ActionUtils.CreateNewAction(ActionUtils.ActionTypes.Undo, {}, historyTool.currentModelInfo)
+		SendActionToServerEvent:FireServer(undoAction)
+	end
+end
+
+function CreationManager:Redo()
+	if self.modelInfo:GetMakeupHeadSwapInProgress() then
+		return
+	end
+	local layerTool = self.baseUI.EditingUI.layerTool
+	local historyTool = if layerTool then layerTool.historyTool else self.historyTool
+	if historyTool:getRedoCount() > 0 then
+		historyTool:redo()
+		local redoAction = ActionUtils.CreateNewAction(ActionUtils.ActionTypes.Redo, {}, historyTool.currentModelInfo)
+		SendActionToServerEvent:FireServer(redoAction)
+	end
+end
+
 function CreationManager:ResetCamera()
+	self.modelDisplay:SetCameraFacingYaw(0)
 	self.cameraManager:ResetCamera(true --[[useTween]])
 end
 
+function CreationManager:FocusCameraOnMakeupAssetType(makeupAssetType: string?, useTween: boolean, panForPanel: boolean)
+	self.modelDisplay:ResetCameraRotation()
+	local cameraFacingYaw = self.cameraManager:FocusOnMakeupAssetType(makeupAssetType, useTween, panForPanel)
+	self.modelDisplay:SetCameraFacingYaw(cameraFacingYaw)
+end
+
+local function getPartsCenter(parts: { BasePart }): Vector3
+	local center = Vector3.zero
+	for _, part in parts do
+		center += part.Position
+	end
+	return center / #parts
+end
+
+-- Resolves the owning model's layer tool, even outside isolation.
+-- Restores its editing context and may yield. Non-selection callers must restore the UI's active context afterward.
+function CreationManager:GetLayerToolForGroup(groupId: string?)
+	if not self.previewAccessoryTool then
+		return self.layerTool
+	end
+
+	for category, selection in self.previewAccessoryTool.selections do
+		if selection.group.name == groupId then
+			local contextReady = self.previewAccessoryTool:SetEditingCategory(category)
+			assert(contextReady, "Could not restore accessory editing images")
+			local tools = self.accessoryTextureTools[category]
+			if not tools then
+				local modelInfo = selection.editModelInfo
+				local historyTool = HistoryTool.new(modelInfo)
+				historyTool:setSelectLayerCallback(function(layerInfo)
+					self.baseUI:SelectLayer(layerInfo)
+				end)
+				tools = {
+					historyTool = historyTool,
+					layerTool = LayerTool.new(modelInfo, modelInfo:GetMeshParts()[1].Name, historyTool),
+				}
+				self.accessoryTextureTools[category] = tools
+			end
+			return tools.layerTool
+		end
+	end
+	local contextReady = self.previewAccessoryTool:SetEditingCategory(nil)
+	assert(contextReady, "Could not restore makeup decal editing images")
+	return self.layerTool
+end
+
+-- Disposes of cached tools and history for a removed accessory.
+function CreationManager:DestroyAccessoryTextureTools(category: string)
+	local tools = self.accessoryTextureTools[category]
+	if tools then
+		if self.baseUI and self.baseUI.EditingUI.layerTool == tools.layerTool then
+			self.baseUI.EditingUI.layerTool = self.layerTool
+			self.baseUI.TopBarUI:SetHistoryTool(self.layerTool.historyTool)
+		end
+		if tools == self.activeAccessoryTextureTools then
+			self:FinishAccessoryTextureEditing()
+		end
+		if tools.brushTool then
+			tools.brushTool:Destroy()
+			tools.stampTool:Destroy()
+			tools.kitbashTool:Destroy()
+		end
+		tools.historyTool:clear()
+		self.accessoryTextureTools[category] = nil
+	end
+end
+
+-- Activates the accessory's editing tools and frames its isolated model.
+function CreationManager:ShowAccessoryInIsolation(category: string): boolean
+	local selection = self.previewAccessoryTool and self.previewAccessoryTool.selections[category]
+	if not selection then
+		return false
+	end
+	local layerTool = self:GetLayerToolForGroup(selection.group.name)
+	local target = layerTool:GetTargetLayerInfo()
+	if target.groupId ~= selection.group.name then
+		return false
+	end
+	self:FocusCameraOnMakeupAssetType(category, true, true)
+	local parts = self.previewAccessoryTool:ShowIsolated(category)
+	if not parts or #parts == 0 then
+		self.previewAccessoryTool:ShowOnHead()
+		return false
+	end
+
+	local tools = self.accessoryTextureTools[category]
+	local modelInfo = selection.editModelInfo
+	modelInfo:GetMeshInfo():UpdateDeformedEditableMeshes()
+	if not tools.brushTool then
+		tools.brushTool = BrushTool.new(modelInfo, self.inputManager, tools.historyTool)
+		tools.stampTool = StampTool.new(modelInfo, self.inputManager, tools.historyTool, function()
+			self.baseUI.StampBakeModalUI:Open()
+		end)
+		tools.stampTool:ConnectHandlesToStyle(self.baseUI.style)
+		tools.kitbashTool = KitbashTool.new(modelInfo, self.inputManager, self.modelDisplay, tools.historyTool)
+		tools.kitbashTool:ConnectHandlesToStyle(self.baseUI.style)
+	end
+	-- The isolated accessory's tools; nil while the head's tools are active.
+	self.activeAccessoryTextureTools = tools
+	self.modelDisplay:SetTemporaryModel(modelInfo)
+	self.baseUI.EditingUI:SetTextureTools(tools.brushTool, tools.stampTool)
+	self.baseUI.EditingUI:SetKitbashTool(tools.kitbashTool)
+	local cameraFacingYaw = self.cameraManager:FocusCameraOnParts(parts, getPartsCenter(parts), true)
+	self.modelDisplay:SetCameraFacingYaw(cameraFacingYaw)
+	return true
+end
+
+-- Restores head editing while retaining accessory tools and edits.
+function CreationManager:FinishAccessoryTextureEditing()
+	local tools = self.activeAccessoryTextureTools
+	if tools then
+		tools.brushTool:Disable()
+		tools.stampTool:Disable()
+		tools.kitbashTool:Disable()
+		self.activeAccessoryTextureTools = nil
+		self.modelDisplay:RestoreTemporaryModel()
+		self.baseUI.EditingUI:SetTextureTools(self.brushTool, self.stampTool)
+		self.baseUI.EditingUI:SetKitbashTool(self.kitbashTool)
+	end
+	if self.previewAccessoryTool then
+		self.previewAccessoryTool:ShowOnHead()
+	end
+	if tools then
+		self:ResetCamera()
+	end
+end
+
 function CreationManager:PanToLeft()
-	self.cameraManager:PanToLeft(self.isMobile)
+	if self.previewAccessoryTool then
+		local isolatedParts = self.previewAccessoryTool:GetIsolatedParts()
+		if isolatedParts and #isolatedParts > 0 then
+			local cameraFacingYaw =
+				self.cameraManager:FocusCameraOnParts(isolatedParts, getPartsCenter(isolatedParts), true)
+			self.modelDisplay:SetCameraFacingYaw(cameraFacingYaw)
+			return
+		end
+	end
+	local cameraFacingYaw = self.cameraManager:PanToLeft(self.isMobile)
+	self.modelDisplay:SetCameraFacingYaw(cameraFacingYaw)
 end
 
 -- Returns the names of the widget control groups, sorted alphabetically
@@ -417,12 +662,15 @@ function CreationManager:ShowMeshEditControls(controlGroupName)
 end
 
 function CreationManager:HideMeshEditControls()
+	if not self.meshEditingWidgetManager:IsShowingWidgets() then
+		return
+	end
 	self.meshEditingWidgetManager:HideWidgets()
 
 	local updateDeformedEditableMeshesActionMetadata: MeshEditActions.UpdateDeformedEditableMeshesMetadata = {}
 
-	local updateDeformedEditableMeshesAction = Actions.CreateNewAction(
-		Actions.ActionTypes.UpdateDeformedEditableMeshes,
+	local updateDeformedEditableMeshesAction = ActionUtils.CreateNewAction(
+		ActionUtils.ActionTypes.UpdateDeformedEditableMeshes,
 		updateDeformedEditableMeshesActionMetadata
 	)
 
@@ -446,16 +694,50 @@ end
 local function InitModelFromBlankData(blankData: BlanksData.BlankData)
 	-- Editing a different model, so destroy any existing modelInfo
 	DestroyLastModel()
-
-	local model = SetupClientModel(blankData)
+	lastEditableManager = EditableManager.new()
 
 	local currentResolutionIndex = ResolutionManager.GetCurrentIndex()
+	blankData = table.clone(blankData)
+	blankData.textureResolution = Constants.TEXTURE_RESOLUTION_STEPS[currentResolutionIndex]
+	local model = SetupClientModel(blankData)
+
 	InitializeServerModelEvent:FireServer(blankData.name, currentResolutionIndex)
 
-	-- Fetch price from token on the server to display on the client
-	local token = Utils.getToken(game.GameId, blankData.avatarAssetType)
-	local creationPrice = GetCreationPriceFunction:InvokeServer(token)
-	return ModelInfo.new(model, blankData, creationPrice)
+	local creationPrice = 0
+	local makeupItemPrices = {}
+	if blankData.creationType == Constants.CREATION_TYPES.Makeup then
+		local makeupAssetTypes = {}
+		local makeupTokens = {}
+		for _, makeupAssetType in Constants.MAKEUP_ASSET_TYPES do
+			local avatarAssetType = Constants.MAKEUP_ASSET_TYPE_TO_AVATAR_ASSET_TYPE[makeupAssetType]
+			local token = Utils.getMakeupToken(game.GameId, avatarAssetType)
+			if token then
+				table.insert(makeupAssetTypes, makeupAssetType)
+				table.insert(makeupTokens, token)
+			end
+		end
+
+		-- Fetch every makeup item's price with one token-details request on the server.
+		local prices = GetCreationPriceFunction:InvokeServer(makeupTokens)
+		for index, makeupAssetType in makeupAssetTypes do
+			makeupItemPrices[makeupAssetType] = prices[index] or 0
+		end
+	else
+		-- Fetch price from token on the server to display on the client.
+		local token = Utils.getToken(game.GameId, blankData.avatarAssetType)
+		creationPrice = GetCreationPriceFunction:InvokeServer(token)
+	end
+
+	local success, result = pcall(function()
+		return ModelInfo.new(lastEditableManager, model, blankData, creationPrice, makeupItemPrices)
+	end)
+	if not success then
+		lastEditableManager:Destroy()
+		lastEditableManager = nil
+		error(result, 0)
+	end
+
+	return result
 end
 
 local function OpenSwitchEditorsModal(blankData)
@@ -470,7 +752,7 @@ local function OpenSwitchEditorsModal(blankData)
 		DownresCreationWrapper(function()
 			lastEditedModelInfo = InitModelFromBlankData(blankData)
 			UpdateCameraForEditMode(lastEditedModelInfo)
-			CreationManager.new(lastEditedModelInfo)
+			CreationManager.new(lastEditedModelInfo, lastEditableManager)
 			style:Destroy()
 		end)
 	end
@@ -508,7 +790,7 @@ local function EnterCreationMode(modelName)
 
 		UpdateCameraForEditMode(lastEditedModelInfo)
 
-		CreationManager.new(lastEditedModelInfo)
+		CreationManager.new(lastEditedModelInfo, lastEditableManager)
 	end)
 end
 
@@ -544,4 +826,20 @@ function CreationManager:ResetModelInfo()
 	local modelName = lastEditedModelInfo:GetBlankName()
 	DestroyLastModel()
 	EnterCreationMode(modelName)
+end
+
+-- Bake the in-progress stamp; invoked by the stamp bake modal's "Merge Stamp" button.
+function CreationManager:BakeStamp()
+	local stampTool = self.baseUI.EditingUI.stampTool
+	if stampTool then
+		stampTool:CommitStamp()
+	end
+end
+
+-- Drop any pending bake request; invoked by the stamp bake modal's "Cancel Stamp" button.
+function CreationManager:CancelStampBake()
+	local stampTool = self.baseUI.EditingUI.stampTool
+	if stampTool then
+		stampTool:CancelPendingBake()
+	end
 end

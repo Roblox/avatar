@@ -1,7 +1,6 @@
-local AssetService = game:GetService("AssetService")
-
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Modules = ReplicatedStorage:WaitForChild("Modules")
+local Utils = require(Modules:WaitForChild("Utils"))
 local TextureManipulation = Modules:WaitForChild("TextureManipulation")
 local TextureInfo = require(TextureManipulation:WaitForChild("TextureInfo"))
 local Config = Modules:WaitForChild("Config")
@@ -23,11 +22,7 @@ type RegionColorUInt8 = { r: number, g: number, b: number }
 
 -- One byte per PBR texel (0 = no mask, 1 = paint). Built once per ApplyPBRToRegion.
 -- Region masks are square; side length must be an integer multiple of each PBR axis (typically 256×256 cell).
-local function computePbrRegionMask(
-	pbrMapSize: Vector2,
-	regionBuffer: buffer,
-	regionColor: RegionColorUInt8
-): buffer
+local function computePbrRegionMask(pbrMapSize: Vector2, regionBuffer: buffer, regionColor: RegionColorUInt8): buffer
 	local regionR255 = regionColor.r
 	local regionG255 = regionColor.g
 	local regionB255 = regionColor.b
@@ -84,35 +79,6 @@ function TextureUtils.Clear(editableImage: EditableImage)
 	editableImage:DrawRectangle(Vector2.new(), editableImage.Size, Color3.new(), 1.0, Enum.ImageCombineType.Overwrite)
 end
 
-function TextureUtils.DrawCircleBetweenPoints(
-	oldPosition,
-	newPosition,
-	brushSize,
-	brushColor,
-	brushTransparency,
-	editableImage: EditableImage
-)
-	local circleRadius = brushSize / 2
-	local distBetween = (oldPosition - newPosition).magnitude
-
-	if distBetween <= 0 then
-		editableImage:DrawCircle(newPosition, brushSize, brushColor, brushTransparency, Enum.ImageCombineType.Overwrite)
-	end
-
-	for i = 1, distBetween, math.max(math.floor(circleRadius), 1) do
-		local interPosition = oldPosition:Lerp(newPosition, i / distBetween)
-		interPosition = Vector2.new(math.floor(interPosition.X), math.floor(interPosition.Y))
-
-		editableImage:DrawCircle(
-			interPosition,
-			brushSize,
-			brushColor,
-			brushTransparency,
-			Enum.ImageCombineType.Overwrite
-		)
-	end
-end
-
 function TextureUtils.PerformRegionStencil(
 	currentRegion: TextureInfo.Region,
 	previousBuffer,
@@ -150,24 +116,7 @@ function TextureUtils.PerformRegionStencil(
 	end
 end
 
-function TextureUtils.ApplyAlpha(
-	editableImage,
-	targetAlpha
-)
-	local size = editableImage.Size
-	local pixelCount = size.X * size.Y
-
-	local eiBuffer = editableImage:ReadPixelsBuffer(Vector2.zero, size)
-
-	for i = 0, buffer.len(eiBuffer) - 1, 4 do
-		local alpha = buffer.readu8(eiBuffer, i + 3)
-		buffer.writeu8(eiBuffer, i + 3, alpha * targetAlpha)
-	end
-
-	editableImage:WritePixelsBuffer(Vector2.zero, size, eiBuffer)
-end
-
-function TextureUtils.GetRoughnessMaps(
+local function getRoughnessMaps(
 	modelInfo: ModelInfo.ModelInfoClass,
 	textureInfo: TextureInfo.TextureInfoClass,
 	meshPartNames: { string }
@@ -176,15 +125,16 @@ function TextureUtils.GetRoughnessMaps(
 
 	for _, meshPartName in pairs(meshPartNames) do
 		local meshPart = modelInfo:GetMeshPartByName(meshPartName)
-		local roughnessEI = textureInfo:GetRoughnessMap(meshPart)
+		-- Fabric PBR lives on the fill layer (an input layer) so merge-down preserves it.
+		local roughness = textureInfo:GetOrCreateLayer(meshPart, { layerId = Constants.FABRIC_FILL_LAYER }).roughness
 
-		uniqueEditableImages[roughnessEI] = meshPartName
+		uniqueEditableImages[roughness] = meshPartName
 	end
 
 	return uniqueEditableImages
 end
 
-function TextureUtils.GetMetalnessMaps(
+local function getMetalnessMaps(
 	modelInfo: ModelInfo.ModelInfoClass,
 	textureInfo: TextureInfo.TextureInfoClass,
 	meshPartNames: { string }
@@ -193,37 +143,12 @@ function TextureUtils.GetMetalnessMaps(
 
 	for _, meshPartName in pairs(meshPartNames) do
 		local meshPart = modelInfo:GetMeshPartByName(meshPartName)
-		local metalnessEI = textureInfo:GetMetalnessMap(meshPart)
+		local metalness = textureInfo:GetOrCreateLayer(meshPart, { layerId = Constants.FABRIC_FILL_LAYER }).metalness
 
-		uniqueEditableImages[metalnessEI] = meshPartName
+		uniqueEditableImages[metalness] = meshPartName
 	end
 
 	return uniqueEditableImages
-end
-
-function TextureUtils.GetBufferFromPBRRegionRecolor(
-	pbrMap,
-	region,
-	color
-)
-	local pbrMapSize = getPbrAtlasCellSize(pbrMap)
-	local mask = computePbrRegionMask(pbrMapSize, region.regionBuffer :: buffer, region.regionColor :: RegionColorUInt8)
-	local currentPixelsBuffer = pbrMap:ReadPixelsBuffer(Vector2.zero, pbrMapSize)
-
-	local colorR255 = color.R * 255
-	local colorG255 = color.G * 255
-	local colorB255 = color.B * 255
-
-	applyMaskToPbrReadBuffer(
-		currentPixelsBuffer,
-		mask,
-		pbrMapSize.X * pbrMapSize.Y,
-		colorR255,
-		colorG255,
-		colorB255
-	)
-
-	return currentPixelsBuffer
 end
 
 local function getMetalAndRoughColor(isReflective)
@@ -246,8 +171,8 @@ function TextureUtils.ApplyPBRToRegion(modelInfo, textureInfo, region, isReflect
 
 	local metalColor, roughnessColor = getMetalAndRoughColor(isReflective)
 
-	local roughnessMaps = TextureUtils.GetRoughnessMaps(modelInfo, textureInfo, region.meshPartNames)
-	local metalnessMaps = TextureUtils.GetMetalnessMaps(modelInfo, textureInfo, region.meshPartNames)
+	local roughnessMaps = getRoughnessMaps(modelInfo, textureInfo, region.meshPartNames)
+	local metalnessMaps = getMetalnessMaps(modelInfo, textureInfo, region.meshPartNames)
 
 	local sampleEditableImage: EditableImage? = nil
 	for roughnessEditable, _ in roughnessMaps do
@@ -278,53 +203,29 @@ function TextureUtils.ApplyPBRToRegion(modelInfo, textureInfo, region, isReflect
 	for roughnessEditable, _ in roughnessMaps do
 		local atlasWriteSize = getPbrAtlasCellSize(roughnessEditable)
 		local roughnessBuffer = roughnessEditable:ReadPixelsBuffer(Vector2.zero, atlasWriteSize)
-		applyMaskToPbrReadBuffer(
-			roughnessBuffer,
-			mask,
-			texelCount,
-			roughnessR255,
-			roughnessG255,
-			roughnessB255
-		)
+		applyMaskToPbrReadBuffer(roughnessBuffer, mask, texelCount, roughnessR255, roughnessG255, roughnessB255)
 		roughnessEditable:WritePixelsBuffer(Vector2.zero, atlasWriteSize, roughnessBuffer)
 	end
 
 	for metalnessEditable, _ in metalnessMaps do
 		local atlasWriteSize = getPbrAtlasCellSize(metalnessEditable)
 		local metalnessBuffer = metalnessEditable:ReadPixelsBuffer(Vector2.zero, atlasWriteSize)
-		applyMaskToPbrReadBuffer(
-			metalnessBuffer,
-			mask,
-			texelCount,
-			metalnessR255,
-			metalnessG255,
-			metalnessB255
-		)
+		applyMaskToPbrReadBuffer(metalnessBuffer, mask, texelCount, metalnessR255, metalnessG255, metalnessB255)
 		metalnessEditable:WritePixelsBuffer(Vector2.zero, atlasWriteSize, metalnessBuffer)
 	end
 end
 
 function TextureUtils.ApplyPBRMaps(textureInfo, meshPart, isReflective)
-	local metalnessEI = textureInfo:GetMetalnessMap(meshPart)
-    local roughnessEI = textureInfo:GetRoughnessMap(meshPart)
+	-- Fabric PBR lives on the fill layer (an input layer) so merge-down preserves it.
+	local fillLayer = textureInfo:GetOrCreateLayer(meshPart, { layerId = Constants.FABRIC_FILL_LAYER })
+	local metalness = fillLayer.metalness
+	local roughness = fillLayer.roughness
 
 	local metalColor, roughnessColor = getMetalAndRoughColor(isReflective)
 
-	metalnessEI:DrawRectangle(
-		Vector2.new(0, 0),
-		metalnessEI.Size,
-		metalColor,
-		0,
-		Enum.ImageCombineType.Overwrite
-	)
+	metalness:DrawRectangle(Vector2.new(0, 0), metalness.Size, metalColor, 0, Enum.ImageCombineType.Overwrite)
 
-	roughnessEI:DrawRectangle(
-		Vector2.new(0, 0),
-		roughnessEI.Size,
-		roughnessColor,
-		0,
-		Enum.ImageCombineType.Overwrite
-	)
+	roughness:DrawRectangle(Vector2.new(0, 0), roughness.Size, roughnessColor, 0, Enum.ImageCombineType.Overwrite)
 end
 
 function TextureUtils.ClearPBR(textureInfo, meshPart)
@@ -365,212 +266,6 @@ function TextureUtils.PerformRegionColor(
 	end
 
 	targetTexture:WritePixelsBuffer(Vector2.zero, textureSize, currentPixelsBuffer)
-end
-
-function TextureUtils.DrawProjectionBrush(
-	projectionDirection: Vector3,
-	currMeshPart: MeshPart,
-	currEditableMesh: EditableMesh,
-	circlePosition: Vector3,
-	linePosition: Vector3,
-	brushSize: number,
-	lineLength: number,
-	lineUpVec: Vector3,
-	circleBrushConfig,
-	lineBrushConfig,
-	targetEditableImage: EditableImage,
-	pbrInfo
-)
-	local currentDirection = currMeshPart.CFrame:VectorToObjectSpace(projectionDirection)
-
-	local circleBrushProjection: ProjectionParams = {
-		Direction = currentDirection,
-		Position = currMeshPart.CFrame:PointToObjectSpace(circlePosition),
-		Size = Vector3.new(brushSize, brushSize, 100),
-		Up = currMeshPart.CFrame:VectorToObjectSpace(Vector3.new(0, 1, 0)),
-	}
-
-	targetEditableImage:DrawImageProjected(currEditableMesh, circleBrushProjection, circleBrushConfig)
-
-	for _, channelInfo in pairs(pbrInfo) do
-		if channelInfo and channelInfo.editableImage then
-			channelInfo.editableImage:DrawImageProjected(currEditableMesh, circleBrushProjection, channelInfo.circleBrushConfig)
-		end
-	end
-
-	local lineExist = lineLength > 0
-	if lineExist then
-		local lineBrushProjection: ProjectionParams = {
-			Direction = currentDirection,
-			Position = currMeshPart.CFrame:PointToObjectSpace(linePosition),
-			Size = Vector3.new(lineLength, brushSize, 100),
-			Up = currMeshPart.CFrame:VectorToObjectSpace(lineUpVec),
-		}
-
-		targetEditableImage:DrawImageProjected(currEditableMesh, lineBrushProjection, lineBrushConfig)
-
-		for _, channelInfo in pairs(pbrInfo) do
-			if channelInfo and channelInfo.editableImage then
-				channelInfo.editableImage:DrawImageProjected(currEditableMesh, lineBrushProjection, channelInfo.lineBrushConfig)
-			end
-		end
-	end
-end
-
-function TextureUtils.CreateAndSetupProjectionBrushTexturesAndConfigs(
-	sourceAlpha: number,
-	targetAlpha: number,
-	penColor: Color3,
-	colorBlendType: Enum.ImageCombineType,
-	alphaBlendType: Enum.ImageAlphaType
-)
-	local circleTexture = AssetService:CreateEditableImage({
-		Size = Vector2.new(64, 64),
-	})
-
-	local lineTexture = AssetService:CreateEditableImage({
-		Size = Vector2.new(4, 4),
-	})
-
-	local circleTextureSize = circleTexture.Size
-	local circleTextureSizeHalfSize = circleTextureSize * 0.5
-	circleTexture:DrawRectangle(
-		Vector2.zero,
-		circleTextureSize,
-		penColor,
-		sourceAlpha,
-		Enum.ImageCombineType.Overwrite
-	)
-	circleTexture:DrawCircle(
-		circleTextureSizeHalfSize,
-		circleTextureSizeHalfSize.X,
-		penColor,
-		targetAlpha,
-		Enum.ImageCombineType.Overwrite
-	)
-
-	lineTexture:DrawRectangle(Vector2.zero, lineTexture.Size, penColor, targetAlpha, Enum.ImageCombineType.Overwrite)
-
-	local circleBrushConfig: BrushConfig = {
-		Decal = circleTexture,
-		ColorBlendType = colorBlendType,
-		AlphaBlendType = alphaBlendType,
-		BlendIntensity = 1,
-		FadeAngle = 180.0,
-	}
-
-	local lineBrushConfig: BrushConfig = {
-		Decal = lineTexture,
-		ColorBlendType = colorBlendType,
-		AlphaBlendType = alphaBlendType,
-		BlendIntensity = 1,
-		FadeAngle = 180.0,
-	}
-
-	return circleTexture, lineTexture, circleBrushConfig, lineBrushConfig
-end
-
-export type ProjectionBrushComputeResult = {
-	castedPointOffSet: Vector3,
-	castedUp: Vector3,
-	projectorCFrame: CFrame,
-	projectorBrushSize: number,
-	castedCenterPointOffSet: Vector3,
-	castedDeltaVecLength: number,
-}
-
-function TextureUtils.GenerateProjectionBrushPoints(
-	prevPoint: Vector3,
-	currPoint: Vector3,
-	cameraCFrame: CFrame,
-	brushSize: number
-)
-	local castedDelta = currPoint + prevPoint
-	local castedCenterPoint = castedDelta * 0.5
-
-	local cameraDirection = cameraCFrame.LookVector
-
-	local currPointOffSet = currPoint - cameraDirection
-	local castedCenterPointOffSet = castedCenterPoint - cameraDirection
-
-	local castedDeltaVec = currPoint - prevPoint
-	local castedDeltaVecLength = castedDeltaVec.Magnitude
-	local castedUp = castedDeltaVec:Cross(cameraDirection).Unit
-
-	local projectorCFrame = CFrame.new(castedCenterPointOffSet) * cameraCFrame.Rotation
-	local projectorBrushSize = Vector3.new(castedDeltaVecLength + brushSize, brushSize, 100)
-
-	local projectionBrushComputeResult: ProjectionBrushComputeResult = {
-		castedPointOffSet = currPointOffSet,
-		castedUp = castedUp,
-		projectorCFrame = projectorCFrame,
-		projectorBrushSize = projectorBrushSize,
-		castedCenterPointOffSet = castedCenterPointOffSet,
-		castedDeltaVecLength = castedDeltaVecLength,
-	}
-
-	return projectionBrushComputeResult
-end
-
-function TextureUtils.GeneratePBRInfo(
-	isErasing,
-	isReflectiveMode,
-	roughnessMap,
-	metalnessMap,
-	normalMap
-)
-	local pbrInfo = {}
-	local pbrBrushTextures = {}
-	local projectionBrushCircleTexturePBR, projectionBrushLineTexturePBR, circleBrushConfigPBR, lineBrushConfigPBR
-	local pbrChannels = {}
-	if not isErasing and isReflectiveMode then
-		pbrChannels = {
-			Metalness = {
-				defaultColor = Constants.PBR_REFLECTIVE_METAL_COLOR,
-				editableImage = metalnessMap
-			},
-			Roughness = {
-				defaultColor = Constants.PBR_REFLECTIVE_ROUGH_COLOR,
-				editableImage = roughnessMap
-			}
-		}
-	else
-		pbrChannels = {
-			Metalness = {
-				defaultColor = Constants.PBR_DEFAULT_METAL_COLOR,
-				editableImage = metalnessMap
-			},
-			Roughness = {
-				defaultColor = Constants.PBR_DEFAULT_ROUGH_COLOR,
-				editableImage = roughnessMap
-			},
-			Normal = {
-				defaultColor = Constants.PBR_DEFAULT_NORMAL_COLOR,
-				editableImage = normalMap
-			}
-		}
-	end
-
-	-- Create configs for each channel
-	for channelName, channelData in pairs(pbrChannels) do
-		local circleBrush, lineBrush, circleConfig, lineConfig = 
-			TextureUtils.CreateAndSetupProjectionBrushTexturesAndConfigs(
-				1.0, 0.0, channelData.defaultColor, 
-				Enum.ImageCombineType.BlendSourceOver, 
-				Enum.ImageAlphaType.Default)
-
-		pbrInfo[channelName] = {
-			circleBrushConfig = circleConfig,
-			lineBrushConfig = lineConfig,
-			editableImage = channelData.editableImage
-		}
-
-		-- Populate pbrBrushTextures and return them for cleanup later
-		table.insert(pbrBrushTextures, circleBrush)
-		table.insert(pbrBrushTextures, lineBrush)
-	end
-
-	return pbrInfo, pbrBrushTextures
 end
 
 -- Given a larger region map and a smaller color map, and a position, check if
@@ -635,10 +330,10 @@ function TextureUtils.WriteBufferForLargerRegionMap(
 			end
 			if matchFound then
 				-- Write the color and alpha to the current pixels buffer
-                buffer.writeu8(currentPixelsBuffer, currentPos, colorR255)
-                buffer.writeu8(currentPixelsBuffer, currentPos + 1, colorG255)
-                buffer.writeu8(currentPixelsBuffer, currentPos + 2, colorB255)
-                buffer.writeu8(currentPixelsBuffer, currentPos + 3, fillAlphaByte)
+				buffer.writeu8(currentPixelsBuffer, currentPos, colorR255)
+				buffer.writeu8(currentPixelsBuffer, currentPos + 1, colorG255)
+				buffer.writeu8(currentPixelsBuffer, currentPos + 2, colorB255)
+				buffer.writeu8(currentPixelsBuffer, currentPos + 3, fillAlphaByte)
 			end
 		end
 	end

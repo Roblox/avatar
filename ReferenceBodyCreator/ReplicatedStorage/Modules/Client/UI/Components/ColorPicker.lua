@@ -4,20 +4,20 @@
 	markers dynamically. Used for painting and fill texture editing UIs.
 ]]
 
-local GuiService = game:GetService("GuiService")
-
 local UI = script.Parent.Parent
+
 local Style = UI:WaitForChild("Style")
 local StyleConsts = require(Style:WaitForChild("StyleConsts"))
 local StyleUtils = require(Style:WaitForChild("StyleUtils"))
+
+local Components = UI:WaitForChild("Components")
+local SwatchBar = require(Components:WaitForChild("SwatchBar"))
 
 local ColorPickerInternal = {}
 ColorPickerInternal.__index = ColorPickerInternal
 
 function ColorPickerInternal:ConnectDragDetector(dragDetector: UIDragDetector, setPropertyCallback: (Vector2) -> nil)
 	-- This connects a dragDetector to its parent and a property setting.
-
-	local topLeftInset = GuiService:GetInsetArea(Enum.ScreenInsets.None).Min
 
 	dragDetector.ResponseStyle = Enum.UIDragDetectorResponseStyle.CustomScale
 
@@ -26,15 +26,19 @@ function ColorPickerInternal:ConnectDragDetector(dragDetector: UIDragDetector, s
 		"UI Drag Detector must be parented to a GuiObject"
 	)
 
+	-- Phone orientation can change the inset after this UI is created.
 	dragDetector.DragStart:Connect(function(inputPos)
+		local topLeftInset = StyleUtils.GetTopLeftInset()
 		setPropertyCallback(StyleUtils.GetMousePositionScaleOnComponent(dragDetector.Parent, inputPos + topLeftInset))
 		self.OnColorChangedCallback(self:GetColor(), false --[[isInputEnding]])
 	end)
 	dragDetector.DragContinue:Connect(function(inputPos)
+		local topLeftInset = StyleUtils.GetTopLeftInset()
 		setPropertyCallback(StyleUtils.GetMousePositionScaleOnComponent(dragDetector.Parent, inputPos + topLeftInset))
 		self.OnColorChangedCallback(self:GetColor(), false --[[isInputEnding]])
 	end)
 	dragDetector.DragEnd:Connect(function(inputPos)
+		local topLeftInset = StyleUtils.GetTopLeftInset()
 		setPropertyCallback(StyleUtils.GetMousePositionScaleOnComponent(dragDetector.Parent, inputPos + topLeftInset))
 		self.OnColorChangedCallback(self:GetColor(), true --[[isInputEnding]])
 	end)
@@ -139,6 +143,31 @@ function ColorPickerInternal:makeSatValPicker()
 	return satValPicker
 end
 
+function ColorPickerInternal:makeSwatchBar()
+	local function onSelectColor(color)
+		local h, s, v = Color3.toHSV(color)
+		self:SetSatVal(Vector2.new(s, 1 - v))
+		self:SetHue(Vector2.new(h, 1))
+		self.OnColorChangedCallback(color, true)
+	end
+
+	local function onSelectOpacity(opacity)
+		self:SetOpacity(Vector2.new(opacity, 1))
+	end
+
+	return SwatchBar.createComponentFrame(
+		onSelectColor,
+		function()
+			return self:GetColor()
+		end,
+		onSelectOpacity,
+		function()
+			return self:GetOpacity()
+		end,
+		StyleConsts.SwatchBarDefaultColors
+	)
+end
+
 function ColorPickerInternal:SetSatVal(mousePositionScale: Vector2)
 	self.s = mousePositionScale.X
 	self.v = 1 - mousePositionScale.Y
@@ -201,7 +230,7 @@ function ColorPickerInternal:UpdateOpacityGradient()
 	end
 end
 
-function ColorPickerInternal.new(colorPickerCallback, opacityPickerCallback)
+function ColorPickerInternal.new(colorPickerCallback, opacityPickerCallback, includeSwatchBar: boolean?)
 	local self = {}
 	setmetatable(self, ColorPickerInternal)
 
@@ -218,10 +247,17 @@ function ColorPickerInternal.new(colorPickerCallback, opacityPickerCallback)
 	-- Most styling is done via StyleSheets via tag -- see UI/Style.lua
 	StyleUtils.AddStyleTag(self.frame, StyleConsts.tags.ColorPicker)
 
+	if includeSwatchBar then
+		local swatchBarFrame = self:makeSwatchBar()
+
+		swatchBarFrame.LayoutOrder = 1
+		swatchBarFrame.Parent = self.frame
+	end
+
 	-- Create the saturation/value picker UI
 	self.satValPicker = self:makeSatValPicker()
 	self.satValPicker.Parent = self.frame
-	self.satValPicker.LayoutOrder = 1
+	self.satValPicker.LayoutOrder = 2
 
 	self.satValColorDot = makeColorDot()
 	self.satValColorDot.Parent = self.satValPicker
@@ -231,7 +267,7 @@ function ColorPickerInternal.new(colorPickerCallback, opacityPickerCallback)
 	-- Create the hue picker UI
 	self.huePicker = self:makeHuePicker()
 	self.huePicker.Parent = self.frame
-	self.huePicker.LayoutOrder = 2
+	self.huePicker.LayoutOrder = 3
 
 	self.hueColorDot = makeColorDot()
 	self.hueColorDot.Parent = self.huePicker
@@ -241,15 +277,15 @@ function ColorPickerInternal.new(colorPickerCallback, opacityPickerCallback)
 	-- Create opacity picker UI
 	self.opacityPicker = self:makeOpacitySlider()
 	self.opacityPicker.Parent = self.frame
-	self.opacityPicker.LayoutOrder = 3
+	self.opacityPicker.LayoutOrder = 4
 
 	return self
 end
 
 local ColorPickerPublic = {}
 
-function ColorPickerPublic.createComponentFrame(colorPickerCallback, opacityPickerCallback)
-	local colorPicker = ColorPickerInternal.new(colorPickerCallback, opacityPickerCallback)
+function ColorPickerPublic.createComponentFrame(colorPickerCallback, opacityPickerCallback, includeSwatchBar: boolean?)
+	local colorPicker = ColorPickerInternal.new(colorPickerCallback, opacityPickerCallback, includeSwatchBar)
 
 	return colorPicker.frame
 end

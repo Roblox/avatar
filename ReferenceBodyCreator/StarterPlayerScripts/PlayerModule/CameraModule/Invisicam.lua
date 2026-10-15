@@ -416,7 +416,6 @@ function Invisicam:Update(dt: number, desiredCameraCFrame: CFrame, desiredCamera
 
 	self.camera = game.Workspace.CurrentCamera
 
-	-- TODO: Move this to a GetHumanoidRootPart helper, probably combine with CheckTorsoReference
 	-- Make sure we still have a HumanoidRootPart
 	if not self.humanoidRootPart then
 		local humanoid = self.char:FindFirstChildOfClass("Humanoid")
@@ -431,7 +430,6 @@ function Invisicam:Update(dt: number, desiredCameraCFrame: CFrame, desiredCamera
 			end
 		end
 
-		-- TODO: Replace this with something more sensible
 		local ancestryChangedConn
 		ancestryChangedConn = self.humanoidRootPart.AncestryChanged:Connect(function(child, parent)
 			if child == self.humanoidRootPart and not parent then 

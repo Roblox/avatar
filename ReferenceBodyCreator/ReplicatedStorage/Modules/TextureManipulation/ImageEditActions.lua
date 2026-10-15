@@ -8,12 +8,20 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")
 
+local ActionUtils = require(Modules:WaitForChild("ActionUtils"))
 local Utils = require(Modules:WaitForChild("Utils"))
+
 local TextureManipulation = Modules:WaitForChild("TextureManipulation")
 local TextureUtils = require(TextureManipulation:WaitForChild("TextureUtils"))
 local TextureInfo = require(TextureManipulation:WaitForChild("TextureInfo"))
 
 local ModelInfo = require(Modules:WaitForChild("ModelInfo"))
+
+local Brushes = Modules:WaitForChild("Brushes")
+local Utils = require(Modules:WaitForChild("Utils"))
+
+local BrushInfo = require(Brushes:WaitForChild("BrushInfo"))
+local BrushUtils = require(Brushes:WaitForChild("BrushUtils"))
 
 local Config = Modules:WaitForChild("Config")
 local Constants = require(Config:WaitForChild("Constants"))
@@ -64,7 +72,8 @@ ImageEditActions.RecolorAction = {
 	ExecuteAction = function(modelInfo, actionMetaData: RecolorActionMetadata)
 		local targetMeshPart = modelInfo:GetMeshPartByName(actionMetaData.targetMeshPartName)
 		local textureInfo = modelInfo:GetTextureInfo()
-		local colorMap: EditableImage = textureInfo:GetOrCreateLayer(targetMeshPart, Constants.FABRIC_FILL_LAYER)
+		local colorMap: EditableImage =
+			textureInfo:GetOrCreateLayer(targetMeshPart, { layerId = Constants.FABRIC_FILL_LAYER }).color
 
 		colorMap:DrawRectangle(
 			Vector2.new(0, 0),
@@ -99,7 +108,7 @@ local function GetUniqueEditableImages(
 
 	for _, meshPartName in pairs(meshPartNames) do
 		local meshPart = modelInfo:GetMeshPartByName(meshPartName)
-		local colorMap = textureInfo:GetOrCreateLayer(meshPart, Constants.FABRIC_FILL_LAYER)
+		local colorMap = textureInfo:GetOrCreateLayer(meshPart, { layerId = Constants.FABRIC_FILL_LAYER }).color
 
 		uniqueEditableImages[colorMap] = meshPartName
 	end
@@ -177,12 +186,7 @@ ImageEditActions.RecolorRegionAction = {
 			end
 		end
 
-		TextureUtils.ApplyPBRToRegion(
-			modelInfo,
-			textureInfo,
-			region,
-			actionMetaData.isReflectiveMode
-		)
+		TextureUtils.ApplyPBRToRegion(modelInfo, textureInfo, region, actionMetaData.isReflectiveMode)
 	end,
 }
 
@@ -204,61 +208,15 @@ ImageEditActions.ApplyPBRToRegionAction = {
 	end,
 }
 
-export type BrushStrokeActionMetadata = {
-	targetMeshPartName: string,
-	brushSize: number,
-	brushColor: Color3,
-	brushTransparency: number,
-	drawPositions: { Vector2 },
-}
-
-ImageEditActions.BrushStrokeAction = {
-	IsValidAction = function(modelInfo, actionMetaData: BrushStrokeActionMetadata)
-		if
-			not actionMetaData.brushSize
-			or not actionMetaData.brushColor
-			or not actionMetaData.brushTransparency
-			or not actionMetaData.drawPositions
-		then
-			return false
-		end
-
-		if
-			actionMetaData.brushSize < Constants.MIN_BRUSH_SIZE
-			or actionMetaData.brushSize > Constants.MAX_BRUSH_SIZE
-		then
-			return false
-		end
-
-		if actionMetaData.brushTransparency < 0 or actionMetaData.brushTransparency > 1 then
-			return false
-		end
-
-		if not modelInfo:GetMeshPartByName(actionMetaData.targetMeshPartName) then
-			return false
-		end
-
-		return true
-	end,
-	ExecuteAction = function(modelInfo, actionMetaData: BrushStrokeActionMetadata)
-		local targetMeshPart = modelInfo:GetMeshPartByName(actionMetaData.targetMeshPartName)
-		local textureInfo = modelInfo:GetTextureInfo()
-		local brushLayer: EditableImage = textureInfo:GetOrCreateLayer(targetMeshPart, Constants.BRUSH_LAYER)
-
-		local brushSize = actionMetaData.brushSize
-		local color = actionMetaData.brushColor
-		local transparency = actionMetaData.brushTransparency
-
-		local prevBrushBuffer = brushLayer:ReadPixelsBuffer(Vector2.zero, brushLayer.Size)
-
-		for i, drawPosition in pairs(actionMetaData.drawPositions) do
-			brushLayer:DrawCircle(drawPosition, brushSize, color, transparency, Enum.ImageCombineType.BlendSourceOver)
-		end
-
-		local currentRegionMap = textureInfo:GetMeshPartRegion(actionMetaData.targetMeshPartName)
-		TextureUtils.PerformRegionStencil(currentRegionMap, prevBrushBuffer, brushLayer)
-	end,
-}
+-- Reads every PBR channel of a layer set into a fresh BufferSet.
+local function ReadLayerSetBuffers(layerSet: Constants.EditableImageSet): Constants.BufferSet
+	local buffers: Constants.BufferSet = {} :: Constants.BufferSet
+	for _, channel in Constants.CHANNEL_NAMES do
+		local channelEI = layerSet[channel]
+		buffers[channel] = channelEI:ReadPixelsBuffer(Vector2.zero, channelEI.Size)
+	end
+	return buffers
+end
 
 export type ClearBrushActionMetadata = {
 	targetMeshPartName: string,
@@ -272,65 +230,41 @@ ImageEditActions.ClearBrushAction = {
 
 		return true
 	end,
-	ExecuteAction = function(modelInfo, actionMetaData: ClearBrushActionMetadata)
+	ExecuteAction = function(
+		modelInfo,
+		actionMetaData: ClearBrushActionMetadata,
+		useReplayLayer: boolean?,
+		historyTool: any?
+	)
 		local targetMeshPart = modelInfo:GetMeshPartByName(actionMetaData.targetMeshPartName)
 		local textureInfo = modelInfo:GetTextureInfo()
-		local brushLayer: EditableImage = textureInfo:GetOrCreateLayer(targetMeshPart, Constants.BRUSH_LAYER)
 
-		TextureUtils.Clear(brushLayer)
-		TextureUtils.ClearPBR(textureInfo, targetMeshPart)
-	end,
-}
+		if useReplayLayer then
+			-- Replace history checkpoint pixels instead of the live layer.
+			local _, replaySizes = textureInfo:GetReplayBuffer()
+			assert(replaySizes, "Replay layer information not found")
 
-export type LinearBrushActionMetadata = {
-	targetMeshPartName: string,
-	brushSize: number,
-	brushColor: Color3,
-	brushTransparency: number,
-	drawPositions: { Vector2 },
-}
-
-ImageEditActions.LinearBrushAction = {
-	IsValidAction = function(modelInfo, actionMetaData: LinearBrushActionMetadata)
-		if not actionMetaData.brushSize or not actionMetaData.drawPositions then
-			return false
+			local clearedReplayBuffers: Constants.BufferSet = {} :: Constants.BufferSet
+			for _, channel in Constants.CHANNEL_NAMES do
+				local size = replaySizes[channel]
+				clearedReplayBuffers[channel] = buffer.create(size.X * size.Y * 4)
+			end
+			textureInfo:SetReplayBuffer(clearedReplayBuffers, replaySizes)
+			return
 		end
 
-		if
-			actionMetaData.brushSize < Constants.MIN_BRUSH_SIZE
-			or actionMetaData.brushSize > Constants.MAX_BRUSH_SIZE
-		then
-			return false
+		local targetLayerInfo = textureInfo:GetTargetLayerInfo()
+		local brushLayers: Constants.EditableImageSet = textureInfo:GetOrCreateLayer(targetMeshPart, targetLayerInfo)
+		local preEditBuffers = if historyTool then ReadLayerSetBuffers(brushLayers) else nil
+
+		TextureUtils.Clear(brushLayers.color)
+		TextureUtils.Clear(brushLayers.metalness)
+		TextureUtils.Clear(brushLayers.roughness)
+
+		if historyTool and preEditBuffers then
+			local clearAction = ActionUtils.CreateNewAction(ActionUtils.ActionTypes.ClearBrush, actionMetaData)
+			historyTool:addUndoAction(targetMeshPart.Name, targetLayerInfo, clearAction, preEditBuffers)
 		end
-
-		if not modelInfo:GetMeshPartByName(actionMetaData.targetMeshPartName) then
-			return false
-		end
-
-		return true
-	end,
-	ExecuteAction = function(modelInfo, actionMetaData: LinearBrushActionMetadata)
-		local targetMeshPart = modelInfo:GetMeshPartByName(actionMetaData.targetMeshPartName)
-		local textureInfo = modelInfo:GetTextureInfo()
-		local brushLayer: EditableImage = textureInfo:GetOrCreateLayer(targetMeshPart, Constants.BRUSH_LAYER)
-
-		local prevBrushBuffer = brushLayer:ReadPixelsBuffer(Vector2.zero, brushLayer.Size)
-
-		local prevDrawPosition = #actionMetaData.drawPositions > 0 and actionMetaData.drawPositions[1] or nil
-		for i, drawPosition in pairs(actionMetaData.drawPositions) do
-			TextureUtils.DrawCircleBetweenPoints(
-				prevDrawPosition,
-				drawPosition,
-				actionMetaData.brushSize,
-				actionMetaData.brushColor,
-				actionMetaData.brushTransparency,
-				brushLayer
-			)
-			prevDrawPosition = drawPosition
-		end
-
-		local currentRegionMap = textureInfo:GetMeshPartRegion(actionMetaData.targetMeshPartName)
-		TextureUtils.PerformRegionStencil(currentRegionMap, prevBrushBuffer, brushLayer)
 	end,
 }
 
@@ -358,6 +292,37 @@ local function IsAllowedSticker(textureId)
 	return false
 end
 
+-- Stickers occupy slots 1..MAX_STICKER_LAYERS, the stamp tool uses the reserved STAMP_LAYER_NUMBER
+local function IsValidStickerLayerNumber(stickerLayerNumber: number): boolean
+	if stickerLayerNumber == Constants.STAMP_LAYER_NUMBER then
+		return true
+	end
+	return stickerLayerNumber >= 1 and stickerLayerNumber <= Constants.MAX_STICKER_LAYERS
+end
+
+-- Where a sticker/stamp's layer lives. A stamp previews as a temporary layer inside the selected
+-- layer's group so it can sit directly above it; regular stickers use their own reserved layer.
+local function GetStickerTargetLayerInfo(textureInfo, actionMetaData)
+	if actionMetaData.stickerLayerNumber == Constants.STAMP_LAYER_NUMBER then
+		return { groupId = textureInfo:GetTargetLayerInfo().groupId, layerId = Constants.STAMP_LAYER }
+	end
+	return { layerId = Constants.STICKER_LAYER_PREFIX .. actionMetaData.stickerLayerNumber }
+end
+
+local function GetOrCreateStickerLayer(textureInfo, targetMeshPart, actionMetaData): (EditableImage, boolean)
+	-- A stamp is inserted directly above the currently-selected layer so it previews in the correct
+	-- position; regular stickers just land at the top of their stack.
+	local insertAfterLayerName = if actionMetaData.stickerLayerNumber == Constants.STAMP_LAYER_NUMBER
+		then textureInfo:GetTargetLayerInfo().layerId
+		else nil
+
+	return textureInfo:GetOrCreateLayer(
+		targetMeshPart,
+		GetStickerTargetLayerInfo(textureInfo, actionMetaData),
+		insertAfterLayerName
+	)
+end
+
 ImageEditActions.StickerAction = {
 	IsValidAction = function(modelInfo, actionMetaData: StickerActionMetadata)
 		if not actionMetaData.position or not actionMetaData.rotation or not actionMetaData.scale then
@@ -368,11 +333,7 @@ ImageEditActions.StickerAction = {
 			return false
 		end
 
-		if actionMetaData.stickerLayerNumber < 1 then
-			return false
-		end
-
-		if actionMetaData.stickerLayerNumber > Constants.MAX_STICKER_LAYERS then
+		if not IsValidStickerLayerNumber(actionMetaData.stickerLayerNumber) then
 			return false
 		end
 
@@ -385,10 +346,10 @@ ImageEditActions.StickerAction = {
 	ExecuteAction = function(modelInfo, actionMetaData: StickerActionMetadata)
 		local targetMeshPart = modelInfo:GetMeshPartByName(actionMetaData.targetMeshPartName)
 		local textureInfo = modelInfo:GetTextureInfo()
-		local stickerLayer: EditableImage, didCreateLayer: boolean = textureInfo:GetOrCreateLayer(
-			targetMeshPart,
-			Constants.STICKER_LAYER_PREFIX .. actionMetaData.stickerLayerNumber
-		)
+		local layerSet: EditableImage, didCreateLayer: boolean =
+			GetOrCreateStickerLayer(textureInfo, targetMeshPart, actionMetaData)
+
+		local stickerLayer: EditableImage = layerSet.color
 
 		if not didCreateLayer then
 			TextureUtils.Clear(stickerLayer)
@@ -436,11 +397,7 @@ export type RemoveStickerActionMetadata = {
 
 ImageEditActions.RemoveStickerAction = {
 	IsValidAction = function(modelInfo, actionMetaData: RemoveStickerActionMetadata)
-		if actionMetaData.stickerLayerNumber < 1 then
-			return false
-		end
-
-		if actionMetaData.stickerLayerNumber > Constants.MAX_STICKER_LAYERS then
+		if not IsValidStickerLayerNumber(actionMetaData.stickerLayerNumber) then
 			return false
 		end
 
@@ -454,12 +411,194 @@ ImageEditActions.RemoveStickerAction = {
 		local targetMeshPart = modelInfo:GetMeshPartByName(actionMetaData.targetMeshPartName)
 		local textureInfo: TextureInfo.TextureInfoClass = modelInfo:GetTextureInfo()
 
-		local stickerLayerName = Constants.STICKER_LAYER_PREFIX .. actionMetaData.stickerLayerNumber
+		local stickerTargetLayerInfo = GetStickerTargetLayerInfo(textureInfo, actionMetaData)
 
-		local stickerLayer: EditableImage, _didCreateLayer: boolean =
-			textureInfo:GetOrCreateLayer(targetMeshPart, stickerLayerName)
-		TextureUtils.Clear(stickerLayer)
-		textureInfo:RemoveLayer(targetMeshPart, stickerLayerName)
+		local stickerLayerSet, _didCreateLayer: boolean =
+			textureInfo:GetOrCreateLayer(targetMeshPart, stickerTargetLayerInfo)
+		TextureUtils.Clear(stickerLayerSet.color) -- stickers only edit color for now
+		textureInfo:RemoveLayer(targetMeshPart, stickerTargetLayerInfo)
+	end,
+}
+
+export type StampProjection = {
+	textureId: string,
+	position: Vector3,
+	direction: Vector3,
+	rotation: number,
+	scale: number,
+	mirrorPlane: CFrame?,
+}
+
+export type BakeStampActionMetadata = {
+	targetMeshPartName: string,
+	stickerLayerNumber: number,
+	-- Present for stamps placed via the stamp tool; enables recording an undo step.
+	projection: StampProjection?,
+}
+
+-- Merges the stamp layer down into the currently-selected layer and removes the stamp layer.
+ImageEditActions.BakeStampAction = {
+	IsValidAction = function(modelInfo, actionMetaData: BakeStampActionMetadata)
+		if not IsValidStickerLayerNumber(actionMetaData.stickerLayerNumber) then
+			return false
+		end
+
+		if not modelInfo:GetMeshPartByName(actionMetaData.targetMeshPartName) then
+			return false
+		end
+
+		return true
+	end,
+	ExecuteAction = function(
+		modelInfo,
+		actionMetaData: BakeStampActionMetadata,
+		useReplayLayer: boolean?,
+		historyTool: any?
+	)
+		assert(not useReplayLayer, "BakeStampAction should not be called with a replay layer")
+
+		local targetMeshPart = modelInfo:GetMeshPartByName(actionMetaData.targetMeshPartName)
+		local textureInfo: TextureInfo.TextureInfoClass = modelInfo:GetTextureInfo()
+
+		local targetLayerInfo = textureInfo:GetTargetLayerInfo()
+		local targetLayerSet = textureInfo:GetOrCreateLayer(targetMeshPart, targetLayerInfo)
+		-- The stamp previews as a temporary layer inside the selected layer's group.
+		local stampLayerInfo = GetStickerTargetLayerInfo(textureInfo, actionMetaData)
+		local stampLayerSet = textureInfo:GetOrCreateLayer(targetMeshPart, stampLayerInfo)
+
+		-- Snapshot the pre-bake baseline before the composite mutates the target layer.
+		local shouldRecord = historyTool ~= nil and actionMetaData.projection ~= nil
+		local preEditBuffers
+		if shouldRecord then
+			preEditBuffers = ReadLayerSetBuffers(targetLayerSet)
+		end
+
+		-- Stamps are color-only decals, matching sticker semantics.
+		targetLayerSet.color:DrawImage(Vector2.zero, stampLayerSet.color, Enum.ImageCombineType.BlendSourceOver)
+
+		-- Layer has been stamped and is now useless.
+		TextureUtils.Clear(stampLayerSet.color)
+		textureInfo:RemoveLayer(targetMeshPart, stampLayerInfo)
+
+		if shouldRecord then
+			-- Record the bake as one undo step
+			local projection = actionMetaData.projection
+			local stampMergeAction = ActionUtils.CreateNewAction(ActionUtils.ActionTypes.StampMerge, {
+				targetMeshPartName = actionMetaData.targetMeshPartName,
+				textureId = projection.textureId,
+				position = projection.position,
+				direction = projection.direction,
+				rotation = projection.rotation,
+				scale = projection.scale,
+				mirrorPlane = projection.mirrorPlane,
+			})
+			historyTool:addUndoAction(
+				actionMetaData.targetMeshPartName,
+				targetLayerInfo,
+				stampMergeAction,
+				preEditBuffers
+			)
+		end
+	end,
+}
+
+export type StampMergeActionMetadata = StampProjection & {
+	targetMeshPartName: string,
+}
+
+-- Replay-safe form of a baked stamp for undo/redo: reprojects the stamp decal onto the target
+-- layer (color-only, BlendSourceOver — matching how the stamp was drawn). Never networked; each
+-- peer builds it locally from the projection params. Supports the checkpoint replay layer like
+-- ImageProjectionBrushAction.
+ImageEditActions.StampMergeAction = {
+	IsValidAction = function(modelInfo, actionMetaData: StampMergeActionMetadata)
+		if not actionMetaData.textureId or not actionMetaData.position or not actionMetaData.direction then
+			return false
+		end
+		if not modelInfo:GetMeshPartByName(actionMetaData.targetMeshPartName) then
+			return false
+		end
+		return true
+	end,
+	ExecuteAction = function(modelInfo, actionMetaData: StampMergeActionMetadata, useReplayLayer: boolean?)
+		local targetMeshPart = modelInfo:GetMeshPartByName(actionMetaData.targetMeshPartName)
+		local textureInfo: TextureInfo.TextureInfoClass = modelInfo:GetTextureInfo()
+
+		-- Resolve a dedicated decal image rather than TextureInfo's single-slot sticker cache: that
+		-- cache is tuned for live editing and can hand back a nil/destroyed image during replay.
+		local stickerTexture = AssetService:CreateEditableImageAsync(Content.fromUri(actionMetaData.textureId))
+		assert(stickerTexture, Constants.FAILED_TO_CREATE_EI_MSG)
+
+		local projectionRotater = CFrame.fromAxisAngle(actionMetaData.direction, actionMetaData.rotation)
+		local projection = {
+			Direction = actionMetaData.direction,
+			Position = actionMetaData.position,
+			Size = Vector3.one * actionMetaData.scale,
+			Up = projectionRotater * Vector3.new(0, 1, 0),
+		}
+		local localBrushConfig = {
+			Decal = stickerTexture,
+			ColorBlendType = Enum.ImageCombineType.BlendSourceOver,
+			AlphaBlendType = Enum.ImageAlphaType.Default,
+			BlendIntensity = 1,
+			FadeAngle = Constants.STICKER_FADE_ANGLE,
+		}
+
+		local meshInfo = modelInfo:GetMeshInfo()
+		local projectionTarget = meshInfo:GetProjectionTarget(targetMeshPart)
+
+		-- Keep makeup stamp depth independent of its width and height.
+		if projectionTarget:IsA("WrapTextureTransfer") then
+			projection.Size = Vector3.new(actionMetaData.scale, actionMetaData.scale, Constants.MAX_PAINTING_DISTANCE)
+		end
+
+		-- Draws the stamp (and its mirror, if any) onto one color EditableImage.
+		local function drawOnto(colorImage: EditableImage)
+			if actionMetaData.mirrorPlane then
+				local mirroredProjection = {
+					Direction = Utils.ReflectVectorAcrossPlane(projection.Direction, actionMetaData.mirrorPlane),
+					Position = Utils.ReflectPointAcrossPlane(projection.Position, actionMetaData.mirrorPlane),
+					Size = projection.Size,
+					Up = Utils.ReflectVectorAcrossPlane(projection.Up, actionMetaData.mirrorPlane),
+				}
+				local mirroredBrushConfig = table.clone(localBrushConfig)
+				mirroredBrushConfig.Decal =
+					textureInfo:GetOrCreateMirroredStickerImage(actionMetaData.textureId, stickerTexture)
+				colorImage:DrawImageProjected(projectionTarget, mirroredProjection, mirroredBrushConfig)
+			end
+			colorImage:DrawImageProjected(projectionTarget, projection, localBrushConfig)
+		end
+
+		if useReplayLayer then
+			-- Draw onto the checkpoint replay layer, then write it back
+			local replayBufs, replaySizes = textureInfo:GetReplayBuffer()
+			assert(replayBufs and replaySizes, "Replay layer information not found")
+
+			local replayImages: Constants.EditableImageSet = {} :: Constants.EditableImageSet
+			for _, channel in Constants.CHANNEL_NAMES do
+				local replayEI = AssetService:CreateEditableImage({ Size = replaySizes[channel] })
+				assert(replayEI, Constants.FAILED_TO_CREATE_EI_MSG)
+				replayEI:WritePixelsBuffer(Vector2.zero, replaySizes[channel], replayBufs[channel])
+				replayImages[channel] = replayEI
+			end
+
+			drawOnto(replayImages.color)
+
+			local newReplayBufs: Constants.BufferSet = {} :: Constants.BufferSet
+			local newReplaySizes = {}
+			for _, channel in Constants.CHANNEL_NAMES do
+				local channelEI = replayImages[channel]
+				newReplayBufs[channel] = channelEI:ReadPixelsBuffer(Vector2.zero, channelEI.Size)
+				newReplaySizes[channel] = channelEI.Size
+				channelEI:Destroy()
+			end
+			textureInfo:SetReplayBuffer(newReplayBufs, newReplaySizes)
+		else
+			local targetImages = textureInfo:GetOrCreateLayer(targetMeshPart, textureInfo:GetTargetLayerInfo())
+			drawOnto(targetImages.color)
+		end
+
+		stickerTexture:Destroy()
 	end,
 }
 
@@ -473,6 +612,7 @@ export type ProjectedStickerActionMetadata = {
 	scale: number,
 	direction: Vector3,
 	position: Vector3,
+	mirrorPlane: CFrame?,
 }
 
 ImageEditActions.ProjectedStickerAction = {
@@ -490,11 +630,7 @@ ImageEditActions.ProjectedStickerAction = {
 			return false
 		end
 
-		if actionMetaData.stickerLayerNumber < 1 then
-			return false
-		end
-
-		if actionMetaData.stickerLayerNumber > Constants.MAX_STICKER_LAYERS then
+		if not IsValidStickerLayerNumber(actionMetaData.stickerLayerNumber) then
 			return false
 		end
 
@@ -507,10 +643,10 @@ ImageEditActions.ProjectedStickerAction = {
 	ExecuteAction = function(modelInfo, actionMetaData: ProjectedStickerActionMetadata)
 		local targetMeshPart = modelInfo:GetMeshPartByName(actionMetaData.targetMeshPartName)
 		local textureInfo = modelInfo:GetTextureInfo()
-		local stickerLayer: EditableImage, didCreateLayer: boolean = textureInfo:GetOrCreateLayer(
-			targetMeshPart,
-			Constants.STICKER_LAYER_PREFIX .. actionMetaData.stickerLayerNumber
-		)
+		local layerSet: EditableImage, didCreateLayer: boolean =
+			GetOrCreateStickerLayer(textureInfo, targetMeshPart, actionMetaData)
+
+		local stickerLayer: EditableImage = layerSet.color
 
 		if not didCreateLayer and actionMetaData.clearTexture then
 			TextureUtils.Clear(stickerLayer)
@@ -532,13 +668,31 @@ ImageEditActions.ProjectedStickerAction = {
 			ColorBlendType = Enum.ImageCombineType.BlendSourceOver,
 			AlphaBlendType = Enum.ImageAlphaType.Default,
 			BlendIntensity = 1,
-			FadeAngle = 45.0,
+			FadeAngle = Constants.STICKER_FADE_ANGLE,
 		}
 
 		local meshInfo = modelInfo:GetMeshInfo()
-		local editableMesh = meshInfo:GetEditableMesh(targetMeshPart)
+		local projectionTarget = meshInfo:GetProjectionTarget(targetMeshPart)
 
-		stickerLayer:DrawImageProjected(editableMesh, projection, localBrushConfig)
+		-- Keep makeup stamp depth independent of its width and height.
+		if projectionTarget:IsA("WrapTextureTransfer") then
+			projection.Size = Vector3.new(actionMetaData.scale, actionMetaData.scale, Constants.MAX_PAINTING_DISTANCE)
+		end
+
+		if actionMetaData.mirrorPlane then
+			local mirroredProjection: ProjectionParams = {
+				Direction = Utils.ReflectVectorAcrossPlane(projection.Direction, actionMetaData.mirrorPlane),
+				Position = Utils.ReflectPointAcrossPlane(projection.Position, actionMetaData.mirrorPlane),
+				Size = projection.Size,
+				Up = Utils.ReflectVectorAcrossPlane(projection.Up, actionMetaData.mirrorPlane),
+			}
+			local mirroredBrushConfig = table.clone(localBrushConfig)
+			mirroredBrushConfig.Decal =
+				textureInfo:GetOrCreateMirroredStickerImage(actionMetaData.textureId, stickerTexture)
+			stickerLayer:DrawImageProjected(projectionTarget, mirroredProjection, mirroredBrushConfig)
+		end
+
+		stickerLayer:DrawImageProjected(projectionTarget, projection, localBrushConfig)
 	end,
 }
 
@@ -570,11 +724,7 @@ ImageEditActions.TiledStickerAction = {
 			return false
 		end
 
-		if actionMetaData.stickerLayerNumber < 1 then
-			return false
-		end
-
-		if actionMetaData.stickerLayerNumber > Constants.MAX_STICKER_LAYERS then
+		if not IsValidStickerLayerNumber(actionMetaData.stickerLayerNumber) then
 			return false
 		end
 
@@ -587,10 +737,10 @@ ImageEditActions.TiledStickerAction = {
 	ExecuteAction = function(modelInfo, actionMetaData: TiledStickerActionMetadata)
 		local targetMeshPart = modelInfo:GetMeshPartByName(actionMetaData.targetMeshPartName)
 		local textureInfo = modelInfo:GetTextureInfo()
-		local stickerLayer: EditableImage, didCreateLayer: boolean = textureInfo:GetOrCreateLayer(
-			targetMeshPart,
-			Constants.STICKER_LAYER_PREFIX .. actionMetaData.stickerLayerNumber
-		)
+		local layerSet: EditableImage, didCreateLayer: boolean =
+			GetOrCreateStickerLayer(textureInfo, targetMeshPart, actionMetaData)
+
+		local stickerLayer: EditableImage = layerSet.color
 		local isAccessory = modelInfo:GetCreationType() == Constants.CREATION_TYPES.Accessory
 		local kitbashingEnabled = modelInfo:GetKitbashingEnabled()
 
@@ -731,7 +881,8 @@ ImageEditActions.ClearAction = {
 		local targetMeshPart = modelInfo:GetMeshPartByName(actionMetaData.targetMeshPartName)
 		local textureInfo: TextureInfo.TextureInfoClass = modelInfo:GetTextureInfo()
 
-		local colorMap: EditableImage = textureInfo:GetOrCreateLayer(targetMeshPart, Constants.FABRIC_FILL_LAYER)
+		local colorMap: EditableImage =
+			textureInfo:GetOrCreateLayer(targetMeshPart, { layerId = Constants.FABRIC_FILL_LAYER }).color
 
 		colorMap:DrawRectangle(Vector2.new(0, 0), colorMap.Size, Color3.new(), 1.0, Enum.ImageCombineType.Overwrite)
 
@@ -766,12 +917,17 @@ ImageEditActions.ClearRegionAction = {
 		local clearMeshPartName = region.meshPartNames[1]
 		local targetMeshPart = modelInfo:GetMeshPartByName(clearMeshPartName)
 
-		local colorMap: EditableImage = textureInfo:GetOrCreateLayer(targetMeshPart, Constants.FABRIC_FILL_LAYER)
+		local colorMap: EditableImage =
+			textureInfo:GetOrCreateLayer(targetMeshPart, { layerId = Constants.FABRIC_FILL_LAYER }).color
+		-- The base layer holds the original texture at the fill layer's resolution; clearing a
+		-- region restores those original pixels beneath the fabric fill.
+		local baseLayer: EditableImage = textureInfo:GetBaseLayer(targetMeshPart)
 
 		if region.regionBuffer then
 			assert(region.regionColor, "Region color must be defined if regionBuffer is defined")
 
 			local currentPixelsBuffer = colorMap:ReadPixelsBuffer(Vector2.zero, colorMap.Size)
+			local originalBuffer = baseLayer:ReadPixelsBuffer(Vector2.zero, baseLayer.Size)
 			local regionPixelsBuffer = region.regionBuffer
 
 			local regionR255 = region.regionColor.r
@@ -797,7 +953,7 @@ ImageEditActions.ClearRegionAction = {
 			-- Clear PBR for region
 			TextureUtils.ApplyPBRToRegion(modelInfo, textureInfo, region, false --[[isReflective]])
 		else
-			colorMap:DrawImage(Vector2.zero, originalEditableImage, Enum.ImageCombineType.Overwrite)
+			colorMap:DrawImage(Vector2.zero, baseLayer, Enum.ImageCombineType.Overwrite)
 			TextureUtils.ClearPBR(textureInfo, targetMeshPart)
 		end
 
@@ -805,122 +961,267 @@ ImageEditActions.ClearRegionAction = {
 	end,
 }
 
-export type ProjectionBrushActionMetadata = {
+export type ImageProjectionBrushActionMetadata = {
 	referenceMeshPartName: string,
-	brushColor: Color3,
+	brushId: string,
+	brushSettings: { color: Color3?, opacity: number?, isReflective: boolean? },
 	brushSize: number,
-	colorBlendType: Enum.ImageCombineType,
-	alphaBlendType: Enum.ImageAlphaType,
 	cameraCFrame: CFrame,
-	drawPositions: { Vector2 },
+	drawPositions: { Vector3 },
 	isReflectiveMode: boolean?,
-	brushTransparency: number?,
-	intermediateEditableImageBuffer: buffer,
-	cachedTargetImageBuffer: buffer
+	mirrorPlane: CFrame?,
+	brushTransparency: number,
+	firstBatch: boolean,
+	lastBatch: boolean,
+	seed: number?,
 }
 
-ImageEditActions.ProjectionBrushAction = {
-	IsValidAction = function(modelInfo, actionMetaData: ProjectionBrushActionMetadata)
-		if not actionMetaData.brushColor then
-			return false
-		end
+-- Stores relevant information for each stroke that is currently being drawn. The key is the target
+-- layer's color EditableImage. surfaceSampleImage is the reused brush-sized native sampling
+-- image; nil for non-resampling brushes.
+local ActiveStrokes: {
+	[EditableImage]: {
+		intermediateEIs: Constants.EditableImageSet,
+		cachedTargetBuffers: Constants.BufferSet,
+		lastStampedPoint: Vector3?,
+		surfaceSampleImage: EditableImage?,
+	},
+} =
+	{}
 
+local CompletedStrokePreEdits: { [EditableImage]: Constants.BufferSet } = {}
+
+function ImageEditActions.GetStrokePreEdit(targetLayer: Constants.EditableImageSet): Constants.BufferSet
+	local completed = CompletedStrokePreEdits[targetLayer.color]
+	if completed then
+		CompletedStrokePreEdits[targetLayer.color] = nil
+		return completed
+	end
+
+	local preEdit: Constants.BufferSet = {}
+	for _, channel in Constants.CHANNEL_NAMES do
+		local channelEI = targetLayer[channel]
+		preEdit[channel] = channelEI:ReadPixelsBuffer(Vector2.zero, channelEI.Size)
+	end
+	return preEdit
+end
+
+ImageEditActions.ImageProjectionBrushAction = {
+	IsValidAction = function(modelInfo, actionMetaData: ImageProjectionBrushActionMetadata)
 		if not modelInfo:GetMeshPartByName(actionMetaData.referenceMeshPartName) then
 			return false
 		end
-
 		if #actionMetaData.drawPositions <= 0 then
 			return false
 		end
-
 		return true
 	end,
-	ExecuteAction = function(modelInfo, actionMetaData: ProjectionBrushActionMetadata)
+	ExecuteAction = function(
+		modelInfo,
+		actionMetaData: ImageProjectionBrushActionMetadata,
+		useReplayLayer: boolean?,
+		_historyTool,
+		brushOverride
+	)
 		local referenceMeshPart = modelInfo:GetMeshPartByName(actionMetaData.referenceMeshPartName)
 		local textureInfo = modelInfo:GetTextureInfo()
-		local targetLayer: EditableImage = textureInfo:GetOrCreateLayer(referenceMeshPart, Constants.BRUSH_LAYER)
-		local isErasing = actionMetaData.alphaBlendType ~= Enum.ImageAlphaType.Default
 
-		local intermediateEditableImage = nil
-		local imageToDrawOn = targetLayer
-		if not isErasing then
-			intermediateEditableImage = textureInfo:GetMemorySafeEditableImage(nil, targetLayer.Size)
-			intermediateEditableImage:WritePixelsBuffer(Vector2.zero, targetLayer.Size, actionMetaData.intermediateEditableImageBuffer)
-
-			imageToDrawOn = intermediateEditableImage
+		local targetImages: Constants.EditableImageSet
+		if useReplayLayer then
+			local replayBufs, replaySizes = textureInfo:GetReplayBuffer()
+			assert(replayBufs and replaySizes, "Replay layer information not found")
+			targetImages = {} :: Constants.EditableImageSet
+			for _, channel in Constants.CHANNEL_NAMES do
+				local replayEI = AssetService:CreateEditableImage({ Size = replaySizes[channel] })
+				assert(replayEI, Constants.FAILED_TO_CREATE_EI_MSG)
+				replayEI:WritePixelsBuffer(Vector2.zero, replaySizes[channel], replayBufs[channel])
+				targetImages[channel] = replayEI
+			end
+		else
+			local targetLayerInfo = textureInfo:GetTargetLayerInfo()
+			targetImages = textureInfo:GetOrCreateLayer(referenceMeshPart, targetLayerInfo)
 		end
 
-		local sourceAlpha = if not isErasing then 1.0 else 0.0
-		local targetAlpha = if not isErasing then 0.0 else 1.0
+		-- The color map is a stable EditableImage across batches, so it keys the active stroke.
+		local strokeKey = targetImages.color
 
-		local projectionBrushCircleTexture, projectionBrushLineTexture, circleBrushConfig, lineBrushConfig =
-			TextureUtils.CreateAndSetupProjectionBrushTexturesAndConfigs(
-				sourceAlpha,
-				targetAlpha,
-				actionMetaData.brushColor,
-				actionMetaData.colorBlendType,
-				actionMetaData.alphaBlendType
-			)
+		-- History supplies isolated brush state while borrowing the existing decal images.
+		local brushObject = brushOverride or modelInfo:GetBrushRegistry():GetBrush(actionMetaData.brushId)
+		brushObject:applyReplicationSettings(actionMetaData.brushSettings)
 
-		local pbrInfo, pbrBrushTextures = TextureUtils.GeneratePBRInfo(
-			actionMetaData.alphaBlendType ~= Enum.ImageAlphaType.Default,
-			actionMetaData.isReflectiveMode,
-			textureInfo:GetRoughnessMap(referenceMeshPart),
-			textureInfo:GetMetalnessMap(referenceMeshPart),
-			textureInfo:GetNormalMap(referenceMeshPart)
-		)
+		local settings = BrushInfo.ResolveSettings(brushObject:getSettings())
+		local state = settings.brushType
 
 		local meshInfo = modelInfo:GetMeshInfo()
-		local allEditableMesh = meshInfo:GetEditableMeshMap()
+		local allProjectionTargets = meshInfo:GetProjectionTargetMap()
+		local projectionTarget = allProjectionTargets[referenceMeshPart]
 
 		local cameraCFrame = referenceMeshPart.CFrame:ToWorldSpace(actionMetaData.cameraCFrame)
-		local cameraDirection = cameraCFrame.LookVector
+		local mirrorPlane = if actionMetaData.mirrorPlane
+			then referenceMeshPart.CFrame:ToWorldSpace(actionMetaData.mirrorPlane)
+			else nil
+		local scaledBrushSize = actionMetaData.brushSize
+		local stampSpacingFactor = settings.stampSpacingFactor
+		local spacing = scaledBrushSize * stampSpacingFactor
 
-		local lastCastedPoint = referenceMeshPart.CFrame:PointToWorldSpace(actionMetaData.drawPositions[1])
-		for i, currentPosition in pairs(actionMetaData.drawPositions) do
-			local castedPoint = referenceMeshPart.CFrame:PointToWorldSpace(currentPosition)
-			local scaledBrushSize = actionMetaData.brushSize
+		if actionMetaData.firstBatch and actionMetaData.seed then
+			brushObject:setSeed(actionMetaData.seed)
+		end
+		if actionMetaData.firstBatch then
+			brushObject:BeginStroke()
+		end
 
-			local pbResult =
-				TextureUtils.GenerateProjectionBrushPoints(lastCastedPoint, castedPoint, cameraCFrame, scaledBrushSize)
+		-- Sampling brushes capture the surface beneath each stamp into the brush decal before stamping
+		local needsResample = brushObject:RequiresSurfaceSample()
 
-			for currMeshPart, currEditableMesh in pairs(allEditableMesh) do
-				local collisionTest =
-					Utils.TestOBBCollision(currMeshPart, pbResult.projectorCFrame, pbResult.projectorBrushSize)
-				if collisionTest then
-					TextureUtils.DrawProjectionBrush(
-						cameraDirection,
-						currMeshPart,
-						currEditableMesh,
-						pbResult.castedPointOffSet,
-						pbResult.castedCenterPointOffSet,
-						scaledBrushSize,
-						pbResult.castedDeltaVecLength,
-						pbResult.castedUp,
-						circleBrushConfig,
-						lineBrushConfig,
-						imageToDrawOn,
-						pbrInfo
-					)
+		-- Destroys a stroke's per-channel intermediate images.
+		local function destroyIntermediateEIs(intermediateEIs: Constants.EditableImageSet)
+			for _, channel in Constants.CHANNEL_NAMES do
+				if intermediateEIs[channel] then
+					intermediateEIs[channel]:Destroy()
+				end
+			end
+		end
+
+		-- Reuse the stroke's persistent intermediates across batches; create them on the first batch.
+		local stroke = ActiveStrokes[strokeKey]
+		if actionMetaData.firstBatch or not stroke then
+			if stroke then
+				-- A previous stroke on this layer never received its final batch; reclaim its EIs.
+				destroyIntermediateEIs(stroke.intermediateEIs)
+				if stroke.surfaceSampleImage then
+					stroke.surfaceSampleImage:Destroy()
+					stroke.surfaceSampleImage = nil
 				end
 			end
 
-			lastCastedPoint = castedPoint
+			-- One intermediate per channel, matched to the corresponding target channel's size.
+			local intermediateEIs = {}
+			for _, channel in Constants.CHANNEL_NAMES do
+				local intermediateEI = AssetService:CreateEditableImage({ Size = targetImages[channel].Size })
+				TextureUtils.Clear(intermediateEI)
+				intermediateEIs[channel] = intermediateEI
+			end
+
+			local cachedTargetBuffers = {}
+			for _, channel in Constants.CHANNEL_NAMES do
+				local targetEI = targetImages[channel]
+				cachedTargetBuffers[channel] = targetEI:ReadPixelsBuffer(Vector2.zero, targetEI.Size)
+			end
+
+			stroke = {
+				intermediateEIs = intermediateEIs,
+				cachedTargetBuffers = cachedTargetBuffers,
+			}
+			ActiveStrokes[strokeKey] = stroke
 		end
 
-		-- In order to paint with transparency, we paint to an intermediate EI which we then apply the
-		-- desired alpha value before drawing it to our target EI. This way we get consistent transparency
-		-- across the stroke.
-		if not isErasing then
-			TextureUtils.ApplyAlpha(intermediateEditableImage, actionMetaData.brushTransparency)
-			targetLayer:WritePixelsBuffer(Vector2.zero, targetLayer.Size, actionMetaData.cachedTargetImageBuffer)
-			targetLayer:DrawImage(Vector2.zero, intermediateEditableImage, Enum.ImageCombineType.BlendSourceOver)
+		local intermediateEIs = stroke.intermediateEIs
+		local cachedTargetBuffers = stroke.cachedTargetBuffers
+
+		-- Blending writes straight onto the layer (replace); other brushes accumulate on the intermediates.
+		local imagesToDrawOn = if state == Constants.STATE_BLENDING then targetImages else intermediateEIs
+		local function stampAt(point, brushUp)
+			local projectionSettings: BrushUtils.ProjectionBrushSettings = {
+				surfacePoint = point,
+				cameraDirection = BrushUtils.GetProjectionDirection(projectionTarget, cameraCFrame, point),
+				brushUp = brushUp,
+				scaledBrushSize = scaledBrushSize,
+			}
+			local brushConfig = {
+				ColorBlendType = settings.colorBlendType,
+				AlphaBlendType = settings.alphaBlendType,
+				BlendIntensity = 1,
+				FadeAngle = 180.0,
+			}
+			if needsResample then
+				if not stroke.surfaceSampleImage then
+					local brushSize = Constants.IMAGE_BRUSH_TEXTURE_SIZE
+					stroke.surfaceSampleImage =
+						AssetService:CreateEditableImage({ Size = Vector2.new(brushSize, brushSize) })
+					assert(stroke.surfaceSampleImage, Constants.FAILED_TO_CREATE_EI_MSG)
+				end
+				BrushUtils.StampResampledBrush(
+					allProjectionTargets,
+					projectionSettings,
+					brushConfig,
+					imagesToDrawOn,
+					brushObject,
+					stroke.surfaceSampleImage,
+					targetImages,
+					mirrorPlane
+				)
+			else
+				BrushUtils.StampProjectedBrush(
+					allProjectionTargets,
+					projectionSettings,
+					brushConfig,
+					imagesToDrawOn,
+					brushObject:getBrushEIs(),
+					mirrorPlane,
+					brushObject:getMirroredBrushEIs()
+				)
+			end
 		end
 
-		projectionBrushLineTexture:Destroy()
-		projectionBrushCircleTexture:Destroy()
-		for _, pbrBrushTexture in pairs(pbrBrushTextures) do
-			pbrBrushTexture:Destroy()
+		-- Stamp along stroke path at `spacing` intervals, carrying the last stamp position across batches
+		local lastStampedPoint = stroke.lastStampedPoint
+		local startIndex
+		if lastStampedPoint == nil then
+			-- Stroke start
+			lastStampedPoint = referenceMeshPart.CFrame:PointToWorldSpace(actionMetaData.drawPositions[1])
+			if actionMetaData.firstBatch and settings.stampOnPenDown ~= false then
+				stampAt(lastStampedPoint, cameraCFrame.UpVector)
+			end
+			startIndex = 2 -- start the walk from the first point, looking at the second point
+		else
+			startIndex = 1 -- start the walk at the last stamped point, looking at the first point
+		end
+
+		for i = startIndex, #actionMetaData.drawPositions do
+			local castedPoint = referenceMeshPart.CFrame:PointToWorldSpace(actionMetaData.drawPositions[i])
+			lastStampedPoint = BrushUtils.WalkBrushTextureSegment(lastStampedPoint, castedPoint, spacing, stampAt)
+		end
+
+		stroke.lastStampedPoint = lastStampedPoint
+
+		-- Composite the whole accumulated stroke onto the pre-stroke target. Non-blending only
+		if not needsResample then
+			BrushUtils.CompositeBrushStroke(
+				targetImages,
+				cachedTargetBuffers,
+				intermediateEIs,
+				state,
+				actionMetaData.brushTransparency
+			)
+		end
+
+		if actionMetaData.lastBatch then
+			destroyIntermediateEIs(intermediateEIs)
+			if stroke.surfaceSampleImage then
+				stroke.surfaceSampleImage:Destroy()
+				stroke.surfaceSampleImage = nil
+			end
+			if not useReplayLayer then
+				CompletedStrokePreEdits[strokeKey] = cachedTargetBuffers
+			end
+			ActiveStrokes[strokeKey] = nil
+		end
+
+		if useReplayLayer then
+			-- Persist the post-stroke pixels back into the checkpoint (per channel), then release the
+			-- throwaway replay images.
+			local newReplayBufs: Constants.BufferSet = {} :: Constants.BufferSet
+			local newReplaySizes = {}
+			for _, channel in Constants.CHANNEL_NAMES do
+				local channelEI = targetImages[channel]
+				newReplayBufs[channel] = channelEI:ReadPixelsBuffer(Vector2.zero, channelEI.Size)
+				newReplaySizes[channel] = channelEI.Size
+			end
+			textureInfo:SetReplayBuffer(newReplayBufs, newReplaySizes)
+			for _, channel in Constants.CHANNEL_NAMES do
+				targetImages[channel]:Destroy()
+			end
 		end
 	end,
 }

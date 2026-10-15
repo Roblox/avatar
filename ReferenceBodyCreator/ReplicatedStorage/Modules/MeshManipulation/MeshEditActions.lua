@@ -13,14 +13,59 @@ local ModelInfo = require(Modules:WaitForChild("ModelInfo"))
 
 local MeshManipulation = Modules:WaitForChild("MeshManipulation")
 local AttachmentUtils = require(MeshManipulation:WaitForChild("AttachmentUtils"))
+local MakeupProjectionUtils = require(MeshManipulation:WaitForChild("MakeupProjectionUtils"))
 local MeshInfo = require(MeshManipulation:WaitForChild("MeshInfo"))
 local MeshWidgetUtils = require(MeshManipulation:WaitForChild("MeshWidgetUtils"))
 local MeshUtils = require(MeshManipulation:WaitForChild("MeshUtils"))
 
 local Config = Modules:WaitForChild("Config")
 local Constants = require(Config:WaitForChild("Constants"))
+local KitbashData = require(Config:WaitForChild("KitbashData"))
+local MakeupHeads = require(Config:WaitForChild("MakeupHeads"))
 
 local MeshEditActions = {}
+
+local function isFiniteNumber(value: any): boolean
+	return type(value) == "number" and value == value and math.abs(value) < math.huge
+end
+
+export type SetAccessoryShapeControlMetadata = {
+	targetMeshPartName: string,
+	controlId: string,
+	value: number,
+}
+
+MeshEditActions.SetAccessoryShapeControlAction = {
+	IsValidAction = function(modelInfo, metadata): boolean
+		if
+			type(metadata) ~= "table"
+			or type(metadata.targetMeshPartName) ~= "string"
+			or type(metadata.controlId) ~= "string"
+			or not Constants.MAKEUP_ACCESSORY_ASSET_TYPES[modelInfo:GetServerEditTarget()]
+		then
+			return false
+		end
+		local part = modelInfo:GetMeshPartByName(metadata.targetMeshPartName)
+		local meshInfo = part and modelInfo:GetMeshInfo():GetModelMeshInfo()[part]
+		return meshInfo ~= nil
+			and meshInfo.accessoryShape ~= nil
+			and meshInfo.accessoryShape:IsValidValue(metadata.controlId, metadata.value)
+			and meshInfo.cageInfo ~= nil
+			and meshInfo.cageInfo.isWrapLayer == true
+	end,
+	ExecuteAction = function(modelInfo, metadata: SetAccessoryShapeControlMetadata, _, historyTool)
+		local meshInfoClass = modelInfo:GetMeshInfo()
+		local meshInfo = meshInfoClass:GetMeshInfoByName(metadata.targetMeshPartName)
+		if not meshInfo.accessoryShape:SetValue(meshInfo, metadata.controlId, metadata.value) then
+			return
+		end
+		meshInfoClass:MarkMeshPartDirty(meshInfo.meshPart)
+		-- Projected texture strokes cannot be replayed against a different shape.
+		if historyTool then
+			historyTool:clear()
+		end
+	end,
+}
 
 export type UpdateWidgetPositionActionMetadata = {
 	widgetName: string,
@@ -35,16 +80,17 @@ export type MergeKitbashPieceActionMetadata = {
 	targetMeshPartName: string,
 	kitbashMeshId: string,
 	kitbashTextureId: string,
-	positionMarkerCFrame: CFrame,
+	kitbashSourcePart: MeshPart?,
+	positionMarkerOffset: CFrame,
 	scale: number,
 	rotation: number,
-	atlasSlot: number?,
+	atlasSlot: number,
 	hasDrawnToAtlas: boolean,
 }
 
 export type UnmergeKitbashPieceActionMetadata = {
 	targetMeshPartName: string,
-	mergedFaceIds: { number },
+	pieceSlot: number,
 	atlasSlot: number?,
 }
 
@@ -158,12 +204,41 @@ MeshEditActions.UpdateAttachmentsPositionsAction = {
 
 MeshEditActions.MergeKitbashPieceAction = {
 	IsValidAction = function(modelInfo: ModelInfo.ModelInfoClass, actionMetaData: MergeKitbashPieceActionMetadata)
-		if not actionMetaData.targetMeshPartName or not actionMetaData.kitbashMeshId then
+		if
+			not modelInfo:GetKitbashingEnabled()
+			or not actionMetaData.targetMeshPartName
+			or not actionMetaData.kitbashMeshId
+		then
 			return false
 		end
-		return true
+		local part = modelInfo:GetMeshPartByName(actionMetaData.targetMeshPartName)
+		local slot = actionMetaData.atlasSlot
+		if not part or not Constants.ATLAS_SLOTS[slot] then
+			return false
+		end
+		if actionMetaData.kitbashSourcePart ~= nil then
+			local isMakeup = Constants.MAKEUP_ACCESSORY_ASSET_TYPES[modelInfo:GetServerEditTarget()] == true
+			local found = false
+			for _, entry in KitbashData.GetPieces(isMakeup) do
+				if entry.sourcePart == actionMetaData.kitbashSourcePart then
+					found = entry.sourcePart.MeshId == actionMetaData.kitbashMeshId
+					break
+				end
+			end
+			if not found then
+				return false
+			end
+		end
+		local info = modelInfo:GetMeshInfo():GetModelMeshInfo()[part]
+		local faceIds = info and info.kitbashFacesBySlot and info.kitbashFacesBySlot[slot]
+		return info ~= nil and (not faceIds or #faceIds == 0)
 	end,
-	ExecuteAction = function(modelInfo: ModelInfo.ModelInfoClass, actionMetaData: MergeKitbashPieceActionMetadata)
+	ExecuteAction = function(
+		modelInfo: ModelInfo.ModelInfoClass,
+		actionMetaData: MergeKitbashPieceActionMetadata,
+		_,
+		historyTool
+	)
 		local meshInfo = modelInfo:GetMeshInfo()
 		local textureInfo = modelInfo:GetTextureInfo()
 
@@ -173,27 +248,36 @@ MeshEditActions.MergeKitbashPieceAction = {
 			return
 		end
 
-		local editableMeshMap = meshInfo:GetKitbashEditableMeshMap()
-		local targetEditableMesh = editableMeshMap[targetMeshPart]
-
-		local meshScaleFactorMap = meshInfo:GetScaleFactorMap()
-		local targetScaleFactor = meshScaleFactorMap[targetMeshPart]
+		local info = meshInfo:GetModelMeshInfo()[targetMeshPart]
+		local targetEditableMesh = info.kitbashEditableMesh or info.editableMesh
 
 		local baseTextureLayer = textureInfo:GetBaseLayer(targetMeshPart)
 
-		local addedFaceIds = MeshUtils.MergeKitbashPiece({
+		local addedFaceIds, sourcePositions = MeshUtils.MergeKitbashPiece({
+			editableManager = textureInfo.editableManager,
 			targetMeshPart = targetMeshPart,
 			targetEditableMesh = targetEditableMesh,
-			targetScaleFactor = targetScaleFactor,
+			targetScaleFactor = info.scaleFactor,
 			kitbashMeshId = actionMetaData.kitbashMeshId,
 			kitbashTextureId = actionMetaData.kitbashTextureId,
+			kitbashSourcePart = actionMetaData.kitbashSourcePart,
 			positionMarkerCFrame = targetMeshPart.CFrame:ToWorldSpace(actionMetaData.positionMarkerOffset),
 			scale = actionMetaData.scale,
 			rotation = actionMetaData.rotation,
 			baseTextureLayer = baseTextureLayer,
 			atlasSlot = actionMetaData.atlasSlot,
 			hasDrawnToAtlas = actionMetaData.hasDrawnToAtlas,
+			useSkinningTransfer = Constants.MAKEUP_ACCESSORY_ASSET_TYPES[modelInfo:GetServerEditTarget()] == true,
 		})
+		-- Face IDs belong to this EditableMesh; never use client IDs on the server.
+		info.kitbashFacesBySlot = info.kitbashFacesBySlot or {}
+		info.kitbashFacesBySlot[actionMetaData.atlasSlot] = addedFaceIds
+		info.kitbashVerticesBySlot = info.kitbashVerticesBySlot or {}
+		info.kitbashVerticesBySlot[actionMetaData.atlasSlot] = sourcePositions
+		meshInfo:RefreshKitbashMesh(targetMeshPart)
+		if historyTool then
+			historyTool:clear()
+		end
 
 		if baseTextureLayer and not actionMetaData.hasDrawnToAtlas then
 			textureInfo:UpdateOutputColorMap(targetMeshPart)
@@ -201,17 +285,72 @@ MeshEditActions.MergeKitbashPieceAction = {
 	end,
 }
 
+MeshEditActions.UpdateKitbashPieceAction = {
+	IsValidAction = function(modelInfo, metadata)
+		if
+			not modelInfo:GetKitbashingEnabled()
+			or not Constants.MAKEUP_ACCESSORY_ASSET_TYPES[modelInfo:GetServerEditTarget()]
+			or type(metadata) ~= "table"
+			or type(metadata.targetMeshPartName) ~= "string"
+			or typeof(metadata.positionMarkerOffset) ~= "CFrame"
+			or not isFiniteNumber(metadata.scale)
+			or metadata.scale <= 0
+			or not isFiniteNumber(metadata.rotation)
+		then
+			return false
+		end
+		for _, component in { metadata.positionMarkerOffset:GetComponents() } do
+			if not isFiniteNumber(component) then
+				return false
+			end
+		end
+		local part = modelInfo:GetMeshPartByName(metadata.targetMeshPartName)
+		local info = part and modelInfo:GetMeshInfo():GetModelMeshInfo()[part]
+		return info ~= nil
+			and info.kitbashVerticesBySlot ~= nil
+			and info.kitbashVerticesBySlot[metadata.pieceSlot] ~= nil
+	end,
+	ExecuteAction = function(modelInfo, metadata, _, historyTool)
+		local meshInfo = modelInfo:GetMeshInfo()
+		local part = modelInfo:GetMeshPartByName(metadata.targetMeshPartName)
+		local info = meshInfo:GetModelMeshInfo()[part]
+		MeshUtils.UpdateKitbashVertices(
+			info.kitbashEditableMesh,
+			info.kitbashVerticesBySlot[metadata.pieceSlot],
+			metadata.positionMarkerOffset,
+			metadata.scale,
+			metadata.rotation,
+			info.scaleFactor
+		)
+		meshInfo:RefreshKitbashMesh(part)
+		if historyTool then
+			historyTool:clear()
+		end
+	end,
+}
+
 MeshEditActions.UnmergeKitbashPieceAction = {
 	IsValidAction = function(modelInfo: ModelInfo.ModelInfoClass, actionMetaData: UnmergeKitbashPieceActionMetadata)
-		if not actionMetaData.targetMeshPartName or not actionMetaData.mergedFaceIds then
+		if not modelInfo:GetKitbashingEnabled() or not actionMetaData.targetMeshPartName then
 			return false
 		end
-		if #actionMetaData.mergedFaceIds == 0 then
+		local part = modelInfo:GetMeshPartByName(actionMetaData.targetMeshPartName)
+		if not part then
 			return false
 		end
-		return true
+		local info = modelInfo:GetMeshInfo():GetModelMeshInfo()[part]
+		return info ~= nil
+			and info.kitbashFacesBySlot ~= nil
+			and info.kitbashFacesBySlot[actionMetaData.pieceSlot] ~= nil
+			and (#info.kitbashFacesBySlot[actionMetaData.pieceSlot] > 0 or actionMetaData.atlasSlot ~= nil)
+			and (actionMetaData.atlasSlot == nil or actionMetaData.atlasSlot == actionMetaData.pieceSlot)
 	end,
-	ExecuteAction = function(modelInfo: ModelInfo.ModelInfoClass, actionMetaData: UnmergeKitbashPieceActionMetadata)
+	ExecuteAction = function(
+		modelInfo: ModelInfo.ModelInfoClass,
+		actionMetaData: UnmergeKitbashPieceActionMetadata,
+		_,
+		historyTool
+	)
 		local meshInfo = modelInfo:GetMeshInfo()
 
 		local targetMeshPart = modelInfo:GetMeshPartByName(actionMetaData.targetMeshPartName)
@@ -220,23 +359,34 @@ MeshEditActions.UnmergeKitbashPieceAction = {
 			return
 		end
 
-		local editableMeshMap = meshInfo:GetKitbashEditableMeshMap()
-		local targetEditableMesh = editableMeshMap[targetMeshPart]
+		local info = meshInfo:GetModelMeshInfo()[targetMeshPart]
+		local targetEditableMesh = info.kitbashEditableMesh or info.editableMesh
+		local faceIds = info.kitbashFacesBySlot[actionMetaData.pieceSlot]
 
 		-- Remove merged geometry by removing all added faces and cleaning
 		-- up unused vertices
-		for _, faceId in actionMetaData.mergedFaceIds do
+		for _, faceId in faceIds do
 			targetEditableMesh:RemoveFace(faceId)
 		end
+		-- Keep the atlas slot deletable while its geometry is unmerged.
+		table.clear(faceIds)
+		if info.kitbashVerticesBySlot then
+			info.kitbashVerticesBySlot[actionMetaData.pieceSlot] = nil
+		end
+		info.kitbashFacesBySlot[actionMetaData.pieceSlot] = if actionMetaData.atlasSlot then nil else faceIds
 		targetEditableMesh:RemoveUnused()
+		meshInfo:RefreshKitbashMesh(targetMeshPart)
+		if historyTool then
+			historyTool:clear()
+		end
 
 		-- If we intend to delete the kitbash piece from the creation, remove the
 		-- texture from the atlas
 		if actionMetaData.atlasSlot then
 			local textureInfo = modelInfo:GetTextureInfo()
-			local brushLayer, _ = textureInfo:GetOrCreateLayer(targetMeshPart, Constants.BRUSH_LAYER)
+			local baseLayer = textureInfo:GetBaseLayer(targetMeshPart)
 
-			local atlasSize = brushLayer.Size
+			local atlasSize = baseLayer.Size
 			local slotInfo = Constants.ATLAS_SLOTS[actionMetaData.atlasSlot]
 			local slotScale = 1.0 / Constants.ATLAS_GRID_SIZE
 			local slotWidth = atlasSize.X * slotScale
@@ -244,7 +394,7 @@ MeshEditActions.UnmergeKitbashPieceAction = {
 			local slotX = atlasSize.X * slotInfo.uOffset
 			local slotY = atlasSize.Y * slotInfo.vOffset
 
-			brushLayer:DrawRectangle(
+			baseLayer:DrawRectangle(
 				Vector2.new(slotX, slotY),
 				Vector2.new(slotWidth, slotHeight),
 				Color3.new(0, 0, 0),
@@ -269,6 +419,42 @@ MeshEditActions.UpdateDeformedEditableMeshesAction = {
 	ExecuteAction = function(modelInfo: ModelInfo.ModelInfoClass, actionMetaData: UpdateDeformedEditableMeshesMetadata)
 		local meshInfo: MeshInfo.MeshInfoClass = modelInfo:GetMeshInfo()
 		meshInfo:UpdateDeformedEditableMeshes()
+	end,
+}
+
+MeshEditActions.SetMakeupHeadAction = {
+	-- Checks that the action targets makeup and the selected head supports transfer.
+	IsValidAction = function(modelInfo, metadata): boolean
+		if
+			modelInfo:GetCreationType() ~= Constants.CREATION_TYPES.Makeup
+			or typeof(metadata) ~= "table"
+			or typeof(metadata.headId) ~= "string"
+			or not MakeupHeads.GetOption(metadata.headId)
+		then
+			return false
+		end
+		if metadata.headId ~= MakeupHeads.DefaultId then
+			return typeof(metadata.sourceHead) == "Instance"
+				and metadata.sourceHead:IsA("MeshPart")
+				and metadata.sourceHead:FindFirstChildOfClass("WrapTarget") ~= nil
+		end
+		return true
+	end,
+
+	-- Applies the head swap on the server, refreshes projection data, and clears geometry-dependent history.
+	ExecuteAction = function(modelInfo, metadata, _, historyTool)
+		local head = assert(modelInfo:GetMeshPartByName("Head"), "Missing editing head")
+		local defaultHead = modelInfo:GetMakeupDefaultHead()
+		local source = if metadata.headId == MakeupHeads.DefaultId then defaultHead else metadata.sourceHead
+		local sourceCopy = MakeupProjectionUtils.CloneHead(source)
+		MakeupProjectionUtils.ApplyHead(head, sourceCopy)
+		sourceCopy:Destroy()
+		local transfer = head:FindFirstChild(Constants.MAKEUP_PROJECTION_TRANSFER_NAME, true)
+		assert(transfer and transfer:IsA("WrapTextureTransfer"), "Missing makeup projection transfer")
+		transfer:PrepareProjectionMeshDataAsync()
+		modelInfo:SetMakeupHeadId(metadata.headId)
+		modelInfo:GetMeshInfo():GetModelMeshInfo()[head].scaleFactor = head.MeshSize / head.Size
+		historyTool:clear()
 	end,
 }
 

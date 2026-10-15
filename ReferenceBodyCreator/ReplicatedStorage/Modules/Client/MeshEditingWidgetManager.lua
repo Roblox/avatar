@@ -10,7 +10,9 @@ local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local Modules = ReplicatedStorage:WaitForChild("Modules")
 
 local Actions = require(Modules:WaitForChild("Actions"))
+local ActionUtils = require(Modules:WaitForChild("ActionUtils"))
 local ModelInfo = require(Modules:WaitForChild("ModelInfo"))
+local Constants = require(Modules:WaitForChild("Config"):WaitForChild("Constants"))
 local Utils = require(Modules:WaitForChild("Utils"))
 local InputUtils = require(Modules:WaitForChild("Client"):WaitForChild("InputUtils"))
 
@@ -62,9 +64,14 @@ function MeshEditingWidgetManager.new(modelInfo: ModelInfo.ModelInfoClass, model
 	-- Ensure part is anchored and the SurfaceGui is on the desired face
 	local surfaceGuiConnection = RunService.RenderStepped:Connect(function()
 		local model = self.modelDisplay:GetModel()
+		-- Use the displayed head's bounds, excluding worn hair and accessories.
+		local head = if self.modelInfo:GetCreationType() == Constants.CREATION_TYPES.Makeup
+			then model:FindFirstChild("Head")
+			else nil
+		local extents = if head and head:IsA("BasePart") then head.Size else model:GetExtentsSize()
 		local cameraCFrame = camera:GetRenderCFrame()
 		local distance = (cameraCFrame.Position - model.PrimaryPart.Position).Magnitude
-			- math.max(model:GetExtentsSize().X, model:GetExtentsSize().Z) / 2
+			- math.max(extents.X, extents.Z) / 2
 		local viewportSize = camera.ViewportSize
 		local fov = math.rad(camera.FieldOfView)
 		local aspect = viewportSize.X / viewportSize.Y
@@ -122,8 +129,8 @@ function MeshEditingWidgetManager.new(modelInfo: ModelInfo.ModelInfoClass, model
 			local updateAttachmentsPositionsActionMetadata: MeshEditActions.UpdateAttachmentsPositionsActionMetadata =
 				{}
 
-			local updateWidgetPositionAction = Actions.CreateNewAction(
-				Actions.ActionTypes.UpdateAttachmentsPositions,
+			local updateWidgetPositionAction = ActionUtils.CreateNewAction(
+				ActionUtils.ActionTypes.UpdateAttachmentsPositions,
 				updateAttachmentsPositionsActionMetadata
 			)
 
@@ -433,7 +440,7 @@ function MeshEditingWidgetManager:OnWidgetMoved(widgetData: MeshInfo.WidgetData,
 	end
 
 	local updateWidgetPositionAction =
-		Actions.CreateNewAction(Actions.ActionTypes.UpdateWidgetPosition, updateWidgetPositionActionMetadata)
+		ActionUtils.CreateNewAction(ActionUtils.ActionTypes.UpdateWidgetPosition, updateWidgetPositionActionMetadata)
 
 	Actions.ExecuteAction(self.modelInfo, updateWidgetPositionAction)
 

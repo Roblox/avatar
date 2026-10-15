@@ -12,19 +12,32 @@ local StyleUtils = require(Style:WaitForChild("StyleUtils"))
 
 local Components = UI:WaitForChild("Components")
 local BaseTile = require(Components:WaitForChild("BaseTile"))
-local IconButton = require(Components:WaitForChild("IconButton"))
 
 local TileGrid = {}
 
-function TileGrid.createComponentFrame(gridButtonInfos: { IconButton.IconButtonInfo })
+type TileInfo = {
+	iconId: string?,
+	previewInstance: (Model | BasePart)?,
+	viewportOptions: BaseTile.ViewportOptions?,
+	insetButton: GuiButton?,
+	callback: () -> (),
+}
+
+function TileGrid.createComponentFrame(gridButtonInfos: { TileInfo })
 	local frame = Instance.new("Frame")
 	frame.Name = "TileGridFrame"
 	StyleUtils.AddStyleTag(frame, StyleConsts.tags.TileGrid)
 
 	for i, info in gridButtonInfos do
-		local tile = BaseTile.createComponentFrame(info.iconId, info.callback)
+		local tile = if info.previewInstance
+			then BaseTile.createViewportComponentFrame(info.previewInstance, info.callback, info.viewportOptions)
+			else BaseTile.createComponentFrame(info.iconId, info.callback)
 		tile.Parent = frame
 		tile.LayoutOrder = i
+		if info.insetButton then
+			StyleUtils.AddStyleTag(info.insetButton, StyleConsts.tags.BaseTileInsetButton)
+			info.insetButton.Parent = tile
+		end
 	end
 
 	return frame

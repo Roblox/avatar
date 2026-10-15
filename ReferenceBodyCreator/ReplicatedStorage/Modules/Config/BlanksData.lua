@@ -14,6 +14,10 @@ export type BlankData = {
 	name: string,
 	creationType: string,
 	avatarAssetType: Enum.AvatarAssetType?,
+	isMakeupAccessory: boolean?,
+	alphaClearBase: boolean?,
+	preserveBaseTextureAlpha: boolean?,
+	textureResolution: Vector2?,
 
 	enableYRotation: boolean?,
 	enableWidgetMeshEditing: boolean?,
@@ -23,7 +27,7 @@ export type BlankData = {
 	sourceModel: Model,
 
 	initialZOffset: number,
-	meshEditControlGroups: Folder,
+	meshEditControlGroups: Folder?,
 	previewScale: number?,
 
 	regionMapSubParts: RegionMaps.RegionMap,
@@ -92,6 +96,19 @@ local BlanksData: { BlankData } = {
 		regionMapSubParts = RegionMaps.HatSubParts,
 		regionMapIndividual = RegionMaps.HatIndividualParts,
 		individualPartsNames = getIndividualPartNames(RegionMaps.HatIndividualParts),
+	},
+	{
+		name = "MakeupHeadModel",
+		creationType = Constants.CREATION_TYPES.Makeup,
+		enableYRotation = true,
+
+		sourceModel = Blanks:WaitForChild("MakeupHeadModel"),
+
+		initialZOffset = 2,
+
+		regionMapSubParts = RegionMaps.MakeupHeadSubParts,
+		regionMapIndividual = RegionMaps.MakeupHeadIndividualParts,
+		individualPartsNames = getIndividualPartNames(RegionMaps.MakeupHeadIndividualParts),
 	},
 }
 

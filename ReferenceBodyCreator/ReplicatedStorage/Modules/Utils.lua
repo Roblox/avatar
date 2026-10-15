@@ -257,6 +257,33 @@ utils.GetClosestPointOnPlane = function(point, planeNormal, planePoint)
 	return point + translationVector
 end
 
+-- A mirror plane is represented by a CFrame whose local YZ plane is the reflecting surface.
+utils.ReflectPointAcrossPlane = function(point: Vector3, mirrorPlane: CFrame): Vector3
+	local normal = mirrorPlane.XVector
+	return point - 2 * normal * normal:Dot(point - mirrorPlane.Position)
+end
+
+utils.ReflectVectorAcrossPlane = function(vector: Vector3, mirrorPlane: CFrame): Vector3
+	local normal = mirrorPlane.XVector
+	return vector - 2 * normal * normal:Dot(vector)
+end
+
+utils.ReflectCFrameAcrossPlane = function(cframe: CFrame, mirrorPlane: CFrame): CFrame
+	local position = utils.ReflectPointAcrossPlane(cframe.Position, mirrorPlane)
+	local right = utils.ReflectVectorAcrossPlane(cframe.RightVector, mirrorPlane)
+	local up = utils.ReflectVectorAcrossPlane(cframe.UpVector, mirrorPlane)
+	return CFrame.fromMatrix(position, right, up)
+end
+
+utils.ReflectProjectionSettings = function(projectionSettings, mirrorPlane: CFrame)
+	return {
+		surfacePoint = utils.ReflectPointAcrossPlane(projectionSettings.surfacePoint, mirrorPlane),
+		cameraDirection = utils.ReflectVectorAcrossPlane(projectionSettings.cameraDirection, mirrorPlane),
+		brushUp = utils.ReflectVectorAcrossPlane(projectionSettings.brushUp, mirrorPlane),
+		scaledBrushSize = projectionSettings.scaledBrushSize,
+	}
+end
+
 utils.GetClosestPointOn3dLineSegment = function(point, lineStart, lineEnd)
 	local lineVector = lineEnd - lineStart
 	local length = lineVector.Magnitude
@@ -463,6 +490,42 @@ utils.getToken = function(universeId, avatarAssetType)
 end
 
 --[[
+	Returns the makeup creation token for the given makeup avatar asset type
+	(FaceMakeup/EyeMakeup/LipMakeup/EyebrowAccessory/EyelashAccessory) in the
+	given universe, or nil if none.
+]]
+utils.getMakeupToken = function(universeId, avatarAssetType)
+	local universeEntry = Constants.TOKENS[universeId]
+	if not universeEntry or not universeEntry.makeup then
+		return nil
+	end
+
+	return universeEntry.makeup[avatarAssetType]
+end
+
+-- Fetches all supplied token prices in one AvatarCreationService request. The
+-- returned array has the same ordering as the supplied tokens.
+utils.getPricesForCreations = function(tokens: { string }): { number }
+	local prices = table.create(#tokens, 0)
+	if #tokens == 0 then
+		return prices
+	end
+
+	local complete, result = pcall(function()
+		return AvatarCreationService:GetBatchTokenDetailsAsync(tokens)
+	end)
+	if not complete then
+		return prices
+	end
+
+	for index in tokens do
+		local tokenData = result[index]
+		prices[index] = if tokenData then tokenData.Price or 0 else 0
+	end
+	return prices
+end
+
+--[[
 	Given a creation token, return the expected price for a creation
 	from that token. If we fail to get a result, instead return 0 which
 	will indicate to the ui to show "Publish" on the Buy Button.
@@ -472,19 +535,7 @@ utils.getPriceForCreation = function(token)
 		return 0
 	end
 
-	local complete, result = pcall(function()
-		return AvatarCreationService:GetBatchTokenDetailsAsync({ token })
-	end)
-	if complete then
-		local tokenData = result[1]
-		if tokenData then
-			return tokenData.Price or 0
-		else
-			return 0
-		end
-	else
-		return 0
-	end
+	return utils.getPricesForCreations({ token })[1]
 end
 
 function utils.getBuyButtonString(creationPrice)

@@ -30,10 +30,13 @@ local function createHeaderBar(title, onClose, onTrash)
 	iconsFrame.Parent = headerBar
 	iconsFrame.Name = "IconFrame"
 
-	local trashButton = IconButton.createComponentFrame(StyleConsts.icons.Delete, onTrash)
-	trashButton.Parent = iconsFrame
-	trashButton.LayoutOrder = 3
-	StyleUtils.AddStyleTag(trashButton, StyleConsts.tags.MediumIconButton)
+	if onTrash then
+		local trashButton = IconButton.createComponentFrame(StyleConsts.icons.Delete, onTrash)
+		trashButton.Name = "TrashButton"
+		trashButton.Parent = iconsFrame
+		trashButton.LayoutOrder = 3
+		StyleUtils.AddStyleTag(trashButton, StyleConsts.tags.MediumIconButton)
+	end
 
 	local closeButton = IconButton.createComponentFrame(StyleConsts.icons.XButton, onClose)
 	closeButton.Parent = iconsFrame

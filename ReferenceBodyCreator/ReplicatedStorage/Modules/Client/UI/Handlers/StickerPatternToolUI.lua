@@ -75,7 +75,7 @@ function StickerPatternToolUI.new(
 	local scrollingFrame = Instance.new("ScrollingFrame")
 	StyleUtils.AddStyleTag(scrollingFrame, StyleConsts.tags.ScrollFrame)
 
-	local slider = Slider.createComponentFrame(defaultSliderVal, onSliderChangedCallback)
+	local slider = Slider.new(defaultSliderVal, onSliderChangedCallback):GetFrame()
 	local sliderTool = ToolFrame.createComponentFrame(slider, "Padding")
 
 	-- Regional patterning is only available on the body

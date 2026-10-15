@@ -1,18 +1,26 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")
 
 local Config = Modules:WaitForChild("Config")
 local BlanksData = require(Config:WaitForChild("BlanksData"))
 local Constants = require(Config:WaitForChild("Constants"))
+local MakeupHeads = require(Config:WaitForChild("MakeupHeads"))
+
+local Brushes = Modules:WaitForChild("Brushes")
+local BrushRegistry = require(Brushes:WaitForChild("BrushRegistry"))
 
 local TextureManipulation = Modules:WaitForChild("TextureManipulation")
 local TextureInfo = require(TextureManipulation:WaitForChild("TextureInfo"))
+local MakeupGuideManager = require(TextureManipulation:WaitForChild("MakeupGuideManager"))
+local MakeupMaskManager = require(TextureManipulation:WaitForChild("MakeupMaskManager"))
 
 local Utils = require(Modules:WaitForChild("Utils"))
 local MeshManipulation = Modules:WaitForChild("MeshManipulation")
 local AccessoryUtils = require(MeshManipulation:WaitForChild("AccessoryUtils"))
 local AttachmentUtils = require(MeshManipulation:WaitForChild("AttachmentUtils"))
+local MakeupProjectionUtils = require(MeshManipulation:WaitForChild("MakeupProjectionUtils"))
 local MeshInfo = require(MeshManipulation:WaitForChild("MeshInfo"))
 local MeshWidgetUtils = require(MeshManipulation:WaitForChild("MeshWidgetUtils"))
 
@@ -67,11 +75,21 @@ function ModelInfo:InitializeMeshPartPositions()
 	end
 end
 
-function ModelInfo.new(model, blankData: BlanksData.BlankData, creationPrice: number?): ModelInfoClass
+function ModelInfo.new(
+	editableManager,
+	model,
+	blankData: BlanksData.BlankData,
+	creationPrice: number?,
+	makeupItemPrices: { [string]: number }?
+): ModelInfoClass
 	local self = setmetatable({}, ModelInfo)
 
 	self.model = model
 	self.blankData = blankData
+	self.brushRegistry = BrushRegistry.new()
+	self.makeupHeadSwapInProgress = false
+	self.makeupHeadId = MakeupHeads.DefaultId
+	self.makeupHeadInitialized = false
 
 	self.meshPartsByNameMap = BuildMeshPartsByNameMap(model)
 	self.originalTextureIdMap = BuildOriginalTextureIdMap(model)
@@ -89,7 +107,7 @@ function ModelInfo.new(model, blankData: BlanksData.BlankData, creationPrice: nu
 	-- destroy the current model in order to support freeing
 	-- memory and retrying with lower resolution EditableImages.
 	local success, result = pcall(function()
-		return TextureInfo.new(self.model, blankData)
+		return TextureInfo.new(editableManager, self.model, blankData)
 	end)
 	if not success then
 		self:Destroy()
@@ -124,6 +142,30 @@ function ModelInfo.new(model, blankData: BlanksData.BlankData, creationPrice: nu
 	self.initialModelCFrame = self.model:GetPrimaryPartCFrame()
 
 	self.creationPrice = creationPrice or 0
+	self.makeupItemPrices = makeupItemPrices or {}
+
+	-- Bake the makeup group-composite masks up front
+	if blankData.creationType == Constants.CREATION_TYPES.Makeup and not blankData.isMakeupAccessory then
+		self.makeupMaskManager = MakeupMaskManager.new(self)
+		local ok, err = pcall(function()
+			self.makeupMaskManager:PrebakeAll()
+		end)
+		if not ok then
+			warn("[ModelInfo] Makeup mask prebake failed; group composites will not be masked. " .. tostring(err))
+		end
+
+		if RunService:IsClient() then
+			self.makeupGuideManager = MakeupGuideManager.new(self)
+			local guideOk, guideErr = pcall(function()
+				self.makeupGuideManager:PrebakeAll()
+			end)
+			if not guideOk then
+				warn(
+					"[ModelInfo] Makeup guide prebake failed; region guides will be unavailable. " .. tostring(guideErr)
+				)
+			end
+		end
+	end
 
 	return self
 end
@@ -151,6 +193,37 @@ function ModelInfo:GetInitialModelCFrame()
 end
 
 function ModelInfo:Destroy()
+	if self.textureInfo and self.textureInfo.editingCache then
+		self.textureInfo.editingCache:Destroy()
+	end
+	for _, piece in self.placedPieces or {} do
+		piece.meshPart:Destroy()
+		piece.positionMarker:Destroy()
+	end
+	self.placedPieces = nil
+	if self.accessoryEditSelections then
+		for _, selection in self.accessoryEditSelections do
+			if selection.editModelInfo then
+				selection.editModelInfo:Destroy()
+			end
+			if selection.accessory then
+				selection.accessory:Destroy()
+			end
+			if selection.previewMesh then
+				selection.previewMesh:Destroy()
+			end
+		end
+		table.clear(self.accessoryEditSelections)
+	end
+
+	if self.makeupDefaultHead then
+		self.makeupDefaultHead:Destroy()
+	end
+
+	if self.brushRegistry then
+		self.brushRegistry:Destroy()
+	end
+
 	if self.model then
 		self.model:Destroy()
 	end
@@ -160,6 +233,12 @@ function ModelInfo:Destroy()
 	end
 	if self.textureInfo then
 		self.textureInfo:Destroy()
+	end
+	if self.makeupGuideManager then
+		self.makeupGuideManager:Destroy()
+	end
+	if self.makeupMaskManager then
+		self.makeupMaskManager:Destroy()
 	end
 end
 
@@ -173,6 +252,27 @@ end
 
 function ModelInfo:GetCreationType()
 	return self.blankData.creationType
+end
+
+-- Preserve accessory edits when this head re-enters creation mode.
+function ModelInfo:GetAccessoryEditSelections()
+	if not self.accessoryEditSelections then
+		self.accessoryEditSelections = {}
+	end
+	return self.accessoryEditSelections
+end
+
+function ModelInfo:SetServerEditTarget(target: string, revision: string)
+	self.serverEditTarget = target
+	self.serverEditRevision = revision
+end
+
+function ModelInfo:GetServerEditTarget(): string?
+	return self.serverEditTarget
+end
+
+function ModelInfo:GetServerEditRevision(): string?
+	return self.serverEditRevision
 end
 
 function ModelInfo:GetKitbashingEnabled()
@@ -211,6 +311,10 @@ function ModelInfo:GetCreationPrice()
 	return self.creationPrice
 end
 
+function ModelInfo:GetMakeupItemPrices(): { [string]: number }
+	return self.makeupItemPrices
+end
+
 function ModelInfo:GetHumanoidDescription()
 	return self.model:FindFirstChildWhichIsA("HumanoidDescription")
 end
@@ -225,8 +329,55 @@ function ModelInfo:GetTextureInfo(): TextureInfo.TextureInfoClass
 	return self.textureInfo
 end
 
+function ModelInfo:GetBrushRegistry(): BrushRegistry.BrushRegistryClass
+	return self.brushRegistry
+end
+
 function ModelInfo:GetMeshInfo(): MeshInfo.MeshInfoClass
 	return self.meshInfo
+end
+
+function ModelInfo:GetMakeupMaskManager(): MakeupMaskManager.MakeupMaskManagerClass?
+	return self.makeupMaskManager
+end
+
+-- Keep the original head with the model, which survives closing and reopening the editor UI.
+function ModelInfo:GetMakeupDefaultHead(): MeshPart
+	if not self.makeupDefaultHead then
+		local head = assert(self:GetMeshPartByName("Head"), "Missing editing head")
+		self.makeupDefaultHead = MakeupProjectionUtils.CloneHead(head)
+	end
+	return self.makeupDefaultHead
+end
+
+function ModelInfo:GetMakeupHeadId(): string
+	return self.makeupHeadId
+end
+
+function ModelInfo:SetMakeupHeadId(headId: string)
+	self.makeupHeadId = headId
+end
+
+-- Each template starts with its own skin tone and retains the user's override on reentry.
+function ModelInfo:GetMakeupHeadColor(headId: string): Color3?
+	return self.makeupHeadColors and self.makeupHeadColors[headId]
+end
+
+function ModelInfo:SetMakeupHeadColor(headId: string, color: Color3)
+	self.makeupHeadColors = self.makeupHeadColors or {}
+	self.makeupHeadColors[headId] = color
+end
+
+function ModelInfo:GetMakeupHeadSwapInProgress(): boolean
+	return self.makeupHeadSwapInProgress
+end
+
+function ModelInfo:SetMakeupHeadSwapInProgress(inProgress: boolean)
+	self.makeupHeadSwapInProgress = inProgress
+end
+
+function ModelInfo:GetMakeupGuideManager(): MakeupGuideManager.MakeupGuideManagerClass?
+	return self.makeupGuideManager
 end
 
 function ModelInfo:GetMeshPartByName(meshPartName: string?): MeshPart?

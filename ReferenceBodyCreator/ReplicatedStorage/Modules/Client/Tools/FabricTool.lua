@@ -11,6 +11,7 @@ local Style = UI:WaitForChild("Style")
 local StyleConsts = require(Style:WaitForChild("StyleConsts"))
 
 local Actions = require(Modules:WaitForChild("Actions"))
+local ActionUtils = require(Modules:WaitForChild("ActionUtils"))
 local ModelInfo = require(Modules:WaitForChild("ModelInfo"))
 
 local TextureManipulation = Modules:WaitForChild("TextureManipulation")
@@ -49,7 +50,7 @@ function FabricTool:ApplyColorRegion(color, isFinalInput)
 		isReflectiveMode = self.isReflectiveMode,
 	}
 
-	local recolorAction = Actions.CreateNewAction(Actions.ActionTypes.RecolorRegion, recolorActionMetadata)
+	local recolorAction = ActionUtils.CreateNewAction(ActionUtils.ActionTypes.RecolorRegion, recolorActionMetadata)
 
 	Actions.ExecuteAction(self.modelInfo, recolorAction)
 
@@ -85,7 +86,7 @@ function FabricTool:ReapplyFillForReflectivity()
 			isReflectiveMode = self.isReflectiveMode,
 		}
 
-		local pbrAction = Actions.CreateNewAction(Actions.ActionTypes.ApplyPBRToRegion, pbrMetadata)
+		local pbrAction = ActionUtils.CreateNewAction(ActionUtils.ActionTypes.ApplyPBRToRegion, pbrMetadata)
 
 		Actions.ExecuteAction(self.modelInfo, pbrAction)
 		SendActionToServerEvent:FireServer(pbrAction)
@@ -120,7 +121,7 @@ function FabricTool:ApplyColor(color, isFinalInput)
 			isReflectiveMode = self.isReflectiveMode,
 		}
 
-		local recolorAction = Actions.CreateNewAction(Actions.ActionTypes.Recolor, recolorActionMetadata)
+		local recolorAction = ActionUtils.CreateNewAction(ActionUtils.ActionTypes.Recolor, recolorActionMetadata)
 
 		Actions.ExecuteAction(self.modelInfo, recolorAction)
 
@@ -141,7 +142,7 @@ function FabricTool:ClearAll()
 			targetMeshPartName = meshPart.Name,
 		}
 
-		local clearAction = Actions.CreateNewAction(Actions.ActionTypes.Clear, clearActionMetadata)
+		local clearAction = ActionUtils.CreateNewAction(ActionUtils.ActionTypes.Clear, clearActionMetadata)
 
 		Actions.ExecuteAction(self.modelInfo, clearAction)
 

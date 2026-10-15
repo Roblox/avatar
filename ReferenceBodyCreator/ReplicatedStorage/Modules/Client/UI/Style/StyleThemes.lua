@@ -32,6 +32,10 @@ local THEME_TOKENS = {
 	AvatarPreviewPosition = "AvatarPreviewPosition",
 	CoreUIVisibilityWithPanel = "CoreUIVisibilityWithPanel",
 	LocalMenuRightPadding = "LocalMenuRightPadding",
+	LocalMenuPositionWithOpenPanel = "LocalMenuPositionWithOpenPanel",
+	StampActionBarAnchorPoint = "StampActionBarAnchorPoint",
+	StampActionBarPosition = "StampActionBarPosition",
+	ToolbarVisibleWithStampActionBar = "ToolbarVisibleWithStampActionBar",
 }
 
 -- Mobile Theme
@@ -59,8 +63,25 @@ local THEME_MOBILE_TOKENS = {
 	[THEME_TOKENS.PanelParentFlexFill] = Enum.UIFlexMode.None,
 	[THEME_TOKENS.AvatarPreviewAnchorPoint] = Vector2.new(0.5, 1), -- Bottom center
 	[THEME_TOKENS.AvatarPreviewPosition] = UDim2.fromScale(0.5, 1),
-	[THEME_TOKENS.CoreUIVisibilityWithPanel] = false, -- Hide buttons when behind panel
+	[THEME_TOKENS.CoreUIVisibilityWithPanel] = true, -- Keep buttons visible beside the panel
 	[THEME_TOKENS.LocalMenuRightPadding] = styleTokens.Padding.XSmall,
+	[THEME_TOKENS.LocalMenuPositionWithOpenPanel] = UDim2.new( -- Move the menu left of the open panel
+		1,
+		-styleTokens.PanelSize.X.Offset - styleTokens.Padding.XSmall.Offset,
+		1,
+		0
+	),
+	-- Stamp action bar sits at the bottom center of the screen on mobile.
+	[THEME_TOKENS.StampActionBarAnchorPoint] = Vector2.new(0.5, 1),
+	[THEME_TOKENS.StampActionBarPosition] = UDim2.new(
+		0.5,
+		-styleTokens.PanelSize.X.Offset / 2,
+		1,
+		-styleTokens.Padding.XXLarge.Offset
+	),
+	-- On mobile the toolbar hides while the stamp action bar is open to reclaim
+	-- space; on desktop both stay visible side by side.
+	[THEME_TOKENS.ToolbarVisibleWithStampActionBar] = false,
 }
 
 -- Desktop Theme
@@ -90,6 +111,17 @@ local THEME_DESKTOP_TOKENS = {
 	[THEME_TOKENS.AvatarPreviewPosition] = UDim2.fromScale(1, 0),
 	[THEME_TOKENS.CoreUIVisibilityWithPanel] = true,
 	[THEME_TOKENS.LocalMenuRightPadding] = styleTokens.Padding.XXLarge,
+	[THEME_TOKENS.LocalMenuPositionWithOpenPanel] = UDim2.fromScale(1, 1),
+	-- Stamp action bar sits at the top center of the screen on desktop, inset
+	-- below the top bar to match UIParentPaddingTop.
+	[THEME_TOKENS.StampActionBarAnchorPoint] = Vector2.new(0.5, 0),
+	[THEME_TOKENS.StampActionBarPosition] = UDim2.new(
+		0.5,
+		-styleTokens.PanelSize.X.Offset / 2,
+		0,
+		styleTokens.TopBarHeight.Offset + styleTokens.Padding.Medium.Offset
+	),
+	[THEME_TOKENS.ToolbarVisibleWithStampActionBar] = true,
 }
 
 return {

@@ -192,7 +192,6 @@ function InputManager:InitializeCameraInteractions()
 		local deltaPosition2D = Vector2.new(deltaPosition.X, deltaPosition.Y) * Vector2.new(-1, 1)
 		local mouse1Pressed = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
 		local mouse2Pressed = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
-		--TODO test for touch
 		-- Handle Panning
 		if isMouseMovement and mouse2Pressed or isTouch and self.numActiveTouchInputs == 2 then
 			local averageDeltaPosition2D = deltaPosition2D / self.numActiveInputs

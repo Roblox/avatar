@@ -41,6 +41,28 @@ function Toolbar:GetFrame()
 	return self.frame
 end
 
+-- Enables or disables every button group except the ones at exceptIndices (if given).
+-- Used to gate editing tools on whether a layer is selected.
+function Toolbar:SetEnabledExcept(isEnabled: boolean, exceptIndices: {number}?)
+	for i, buttonGroup in self.buttonGroups do
+		if not exceptIndices or not table.find(exceptIndices, i) then
+			buttonGroup:SetEnabled(isEnabled)
+		end
+	end
+end
+
+function Toolbar:SetGroupVisible(index: number, isVisible: boolean)
+	local buttonGroup = self.buttonGroups[index]
+	if not buttonGroup then
+		return
+	end
+
+	buttonGroup:GetFrame().Visible = isVisible
+	if not isVisible and self.currentSelection == index then
+		self:RemoveSelection()
+	end
+end
+
 function Toolbar.new(toolbarButtonGroupInfos: { ToolbarButtonGroup.ToolbarButtonGroupInfo }, reselectCallback: () -> ())
 	local self = {}
 	setmetatable(self, Toolbar)

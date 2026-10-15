@@ -115,8 +115,6 @@ function Keyboard:BindContextActions()
 		return Enum.ContextActionResult.Pass
 	end
 
-	-- TODO: Revert to KeyCode bindings so that in the future the abstraction layer from actual keys to
-	-- movement direction is done in Lua
 	ContextActionService:BindActionAtPriority("moveForwardAction", handleMoveForward, false,
 		self.CONTROL_ACTION_PRIORITY, Enum.PlayerActions.CharacterForward)
 	ContextActionService:BindActionAtPriority("moveBackwardAction", handleMoveBackward, false,

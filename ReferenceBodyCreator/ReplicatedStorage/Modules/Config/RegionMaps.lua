@@ -354,4 +354,13 @@ RegionMaps.HatIndividualParts = {
 	}
 }
 
+RegionMaps.MakeupHeadSubParts = {}
+
+RegionMaps.MakeupHeadIndividualParts = {
+	["Head"] = {
+		name = "Head",
+		meshPartNames = { "Head" },
+	},
+}
+
 return RegionMaps
